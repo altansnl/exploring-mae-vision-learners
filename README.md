@@ -1,4 +1,11 @@
 ## Exploring: Masked Autoencoders Are Scalable Vision Learners
+
+### Contributors
+
+@altansnl, @AGarciaCast, @Frankkie
+
+### TO-DO
+
 - For our experiments, we will use Tiny ImageNet instead of ImageNet-1K. For our baseline model,
 we will use ViT-B instead of ViT-Large.
 - For MAE ablation experiments, we will only use fine-tuning and not use linear probing. We will
