@@ -40,18 +40,42 @@ class MAEBackboneViT(nn.Module):
         
         # Facebook does a resize of this encodings
         # TODO: see if we need to change it
-        self.num_patches = self.patch_embed.num_patches
+        self.num_patches = self.input_layer.num_patches
         pos_embedding = positional_emb_sin_cos(self.num_patches, embed_dim)
         self.register_buffer('pos_embedding', pos_embedding, persistent=False)
 
         self.initialize_weights()
     
-    def _init_weights(self):
-        # this one is an struggle to code
-        # Facebook does a lot of things that seem random.
-        # Maybe they come from DEiT or BEiT
-        # TODO: see exactly what of the Facebook code is in original/DEiT/BEiT paper
-        pass
+    def initialize_weights(self):
+        # initialize patch_embed like nn.Linear (instead of nn.Conv2d)
+        # nn.Conv2d uses He initialization because it is better for ReLU
+        # But enbeding layer doesnt have activation -> So we want symetric dist
+        # PatchEmbed has layer norm that should fix it rewarless but this way we converge faster
+        # Not able to track!!!
+        w = self.input_layer.proj.weight.data
+        torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+
+        # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
+        # The use of truncated come from DEiT saying that it is hard to train (maybe too much exploding grads)
+        # The sdt seems to come from BEiT but not sure (possible to track)
+        torch.nn.init.normal_(self.cls_token, std=.02)
+        torch.nn.init.normal_(self.mask_token, std=.02)
+
+        # initialize nn.Linear and nn.LayerNorm
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            # we use xavier_uniform following official JAX ViT:
+            # guess: we use GELU so maybe it is better to use xavier
+            # Not able to track!!!
+            torch.nn.init.xavier_uniform_(m.weight)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        
     
     def mask_rand(self, x):
         """Random mask patches
@@ -136,13 +160,28 @@ class MAEDecoderViT(nn.Module):
         self.pred_proj = nn.Linear(embed_dim, patch_size**2 * num_channels)
         
         self.initialize_weights()
-    
-    def _init_weights(self):
-        # this one is an struggle to code
-        # Facebook does a lot of things that seem random.
-        # Maybe they come from DEiT or BEiT
-        # TODO: see exactly what of the Facebook code is in original/DEiT/BEiT paper
-        pass
+        
+    def initialize_weights(self):
+        # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
+        # The use of truncated come from DEiT saying that it is hard to train (maybe too much exploding grads)
+        # The sdt seems to come from BEiT but not sure (possible to track)
+        torch.nn.init.normal_(self.cls_token, std=.02)
+        torch.nn.init.normal_(self.mask_token, std=.02)
+
+        # initialize nn.Linear and nn.LayerNorm
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            # we use xavier_uniform following official JAX ViT:
+            # guess: we use GELU so maybe it is better to use xavier
+            # Not able to track!!!
+            torch.nn.init.xavier_uniform_(m.weight)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
     
     def forward(self, x, undo_token_perm):
         # Patchify and embed
@@ -231,16 +270,6 @@ class MAEPretainViT(nn.Module):
                                     num_patches=self.encoder.num_patches,
                                     layer_norm=norm2
                                     )
-
-        self.initialize_weights()
-        
-        
-    def _init_weights(self):
-        # this one is an struggle to code
-        # Facebook does a lot of things that seem random.
-        # Maybe they come from DEiT or BEiT
-        # TODO: see exactly what of the Facebook code is in original/DEiT/BEiT paper
-        pass
     
     
     def forward(self, x):
