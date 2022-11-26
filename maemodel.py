@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from vanilla_vit import img_to_patch
 from timm.models.vision_transformer import PatchEmbed, Block
 from utils import *
 
