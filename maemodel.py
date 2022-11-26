@@ -59,7 +59,6 @@ class MAEBackboneViT(nn.Module):
         # The use of truncated come from DEiT saying that it is hard to train (maybe too much exploding grads)
         # The sdt seems to come from BEiT but not sure (possible to track)
         torch.nn.init.normal_(self.cls_token, std=.02)
-        torch.nn.init.normal_(self.mask_token, std=.02)
 
         # initialize nn.Linear and nn.LayerNorm
         self.apply(self._init_weights)
@@ -88,7 +87,8 @@ class MAEBackboneViT(nn.Module):
             _type_: _description_
         """
         B, T, E = x.shape
-        random_values = torch.rand(B, T, device=x.device)
+
+        # random_values = torch.rand(B, T, device=x.device)
         
         num_keep = int(T * (1 - self.mask_ratio))
 
@@ -188,7 +188,7 @@ class MAEDecoderViT(nn.Module):
         x = self.input_layer(x)
         
         # Add mask token + positional
-        mask_token = self.mask_toke.repeat(x.shape[0],
+        mask_token = self.mask_token.repeat(x.shape[0],
                                            self.num_patches-(x.shape[1]-1),
                                            1)
         # concat all excluding 
