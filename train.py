@@ -7,6 +7,7 @@ if __name__ == "__main__":
     # options for training
     parser = argparse.ArgumentParser()
 
+    # default parameter setting for Vit-B
     parser.add_argument('--img_dim',  type=int, default=64, help='image dimensionality')
     parser.add_argument('--num_channels',  type=int, default=3, help='number of channels for the input image')
     parser.add_argument('--embed_dim',  type=int, default=768, help='encoder embedding dimensionality')

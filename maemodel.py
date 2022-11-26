@@ -165,7 +165,7 @@ class MAEDecoderViT(nn.Module):
         # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
         # The use of truncated come from DEiT saying that it is hard to train (maybe too much exploding grads)
         # The sdt seems to come from BEiT but not sure (possible to track)
-        torch.nn.init.normal_(self.cls_token, std=.02)
+        # torch.nn.init.normal_(self.cls_token, std=.02)
         torch.nn.init.normal_(self.mask_token, std=.02)
 
         # initialize nn.Linear and nn.LayerNorm
