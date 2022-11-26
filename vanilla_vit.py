@@ -15,15 +15,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 ## Torchvision
-import torchvision
 from torchvision.datasets import CIFAR10
 from torchvision import transforms
 
+"""
 DATASET_PATH = "./CIFAR10/"
 MODEL_PATH = "./models/"
 BATCHSZ = 32
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)
+"""
 
 
 def get_dataloaders():
@@ -218,32 +219,32 @@ def calculate_loss(batch, model):
     # acc = (preds.argmax(dim=-1) == labels).float().mean()
     return loss
     
+if __name__ == "__main__":
+    train_loader, val_loader, test_loader = get_dataloaders()
+    model = VisionTransformer(embed_dim=256, hidden_dim=512, num_heads=8,
+                            num_layers=6, patch_size=4, num_channels=3, num_patches=64,
+                            num_classes=10, dropout=0.2)
 
-train_loader, val_loader, test_loader = get_dataloaders()
-model = VisionTransformer(embed_dim=256, hidden_dim=512, num_heads=8,
-                          num_layers=6, patch_size=4, num_channels=3, num_patches=64,
-                          num_classes=10, dropout=0.2)
+    optimizer = optim.AdamW(model.parameters(), lr=3e-4)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100,150], gamma=0.1)
 
-optimizer = optim.AdamW(model.parameters(), lr=3e-4)
-lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=[100,150], gamma=0.1)
-
-model.to(device)
+    model.to(device)
 
 
-for e in range(20):
-    train_one_epoch(train_loader, model, optimizer, e, device)
-    lr_scheduler.step()
-    model.eval()
-    val_acc = 0.0
-    for i, batch in enumerate(val_loader):
-        imgs, labels = batch
-        imgs = imgs.to(device)
-        labels = labels.to(device)
-        prediction = model(imgs)
-        val_acc += (prediction.argmax(dim=-1) == labels).float().mean()
-    print(f"Validation accuracy: {val_acc/(i+1)}")
-        
-torch.save(model.state_dict(), os.path.join(MODEL_PATH, "ViT_cifar10"))
+    for e in range(20):
+        train_one_epoch(train_loader, model, optimizer, e, device)
+        lr_scheduler.step()
+        model.eval()
+        val_acc = 0.0
+        for i, batch in enumerate(val_loader):
+            imgs, labels = batch
+            imgs = imgs.to(device)
+            labels = labels.to(device)
+            prediction = model(imgs)
+            val_acc += (prediction.argmax(dim=-1) == labels).float().mean()
+        print(f"Validation accuracy: {val_acc/(i+1)}")
+            
+    torch.save(model.state_dict(), os.path.join(MODEL_PATH, "ViT_cifar10"))
 
 
 

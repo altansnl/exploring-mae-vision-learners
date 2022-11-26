@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from vanilla_vit import img_to_patch, AttentionBlock, PositionalEncoding
+from vanilla_vit import img_to_patch
 from timm.models.vision_transformer import PatchEmbed, Block
 from utils import *
 
@@ -29,7 +29,7 @@ class MAEBackboneViT(nn.Module):
         # Layers/Networks
         self.input_layer = PatchEmbed(img_dim, patch_size, num_channels, embed_dim)
         self.backbone = nn.Sequential(*[Block(embed_dim, num_heads, hidden_dim_ratio,
-                                              qkv_bias=True, qk_scale=None, norm_layer=layer_norm)
+                                              qkv_bias=True, norm_layer=layer_norm)
                                         for _ in range(num_layers)])
         
         self.norm = layer_norm(embed_dim)
@@ -145,7 +145,7 @@ class MAEDecoderViT(nn.Module):
         # Layers/Networks
         self.input_layer = nn.Linear(enc_embed_dim, embed_dim)
         self.neck = nn.Sequential(*[Block(embed_dim, num_heads, hidden_dim_ratio,
-                                            qkv_bias=True, qk_scale=None, norm_layer=layer_norm)
+                                            qkv_bias=True, norm_layer=layer_norm)
                                     for _ in range(num_layers)])
         
         self.norm = layer_norm(embed_dim)

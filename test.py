@@ -22,8 +22,5 @@ mask = torch.gather(mask, dim=1, index=undo_row_perm)
 
 
 print(t_masked)
-
 print(undo_row_perm)
 print(mask)
-
-
