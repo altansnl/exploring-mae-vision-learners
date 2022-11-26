@@ -112,7 +112,11 @@ class MAEBackboneViT(nn.Module):
         x = self.input_layer(x)
         
         # add positional emb (skiping cls)
-        x = x + self.pos_embedding[:, 1:]
+        # print(x.shape, self.pos_embedding[:, 1:].shape, self.pos_embedding.shape)
+
+        # we don not generate pos embedding for cls token in the first place
+        # x = x + self.pos_embedding[:, 1:]
+        x = x + self.pos_embedding
         
         # random mask
         x, mask, undo_token_perm = self.mask_rand(x)
