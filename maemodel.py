@@ -108,6 +108,7 @@ class MAEBackboneViT(nn.Module):
     
     def forward(self, x):
         # Patchify and embed
+        print(type(x), type(self.input_layer))
         x = self.input_layer(x)
         
         # add positional emb (skiping cls)

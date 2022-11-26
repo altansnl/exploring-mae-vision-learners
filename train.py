@@ -4,6 +4,8 @@ import argparse
 import torch
 from typing import Iterable
 import timm.optim.optim_factory as optim_factory
+import math
+import sys
 
 DATA_DIR = './tiny-imagenet-200'
 
@@ -13,12 +15,33 @@ def pretrain_epoch(
     optimizer: torch.optim.Optimizer,
     device: torch.device,
     current_epoch: int,
-    print_frequency: int
+    print_frequency: int,
 ):
     model.train(True)
     optimizer.zero_grad()
+    iter = 0
     for (samples, _) in data_loader:
-        print(samples.shape)
+        samples = samples.to(device, non_blocking=True)
+        
+        # mixed precision for forward & loss
+        # not recommended for backwards pass
+        # with torch.cuda.amp.autocast():
+        x, mask = model.forward(samples)
+        loss = model.loss(samples, x, mask)
+
+        loss_value = loss.item()
+
+        if not math.isfinite(loss_value):
+            print("Loss is {}, stopping training".format(loss_value))
+            sys.exit(1)
+
+        # not sure if needed
+        torch.cuda.synchronize()
+        if iter % print_frequency == 0:
+            print(f'loss value in epoch {current_epoch}: {loss_value}')
+        iter += 1
+
+
 
 
 if __name__ == "__main__":
@@ -64,6 +87,7 @@ if __name__ == "__main__":
 
     train_loader_pretrain, val_loader_pretrain = get_pretrain_dataloaders(DATA_DIR, opt.batch_size, imgsz=64, use_cuda=True)
     device = torch.device('cuda')
+    mae.to(device)
     param_groups = optim_factory.add_weight_decay(mae, opt.weight_decay)
     epoch_count = opt.epoch_count
     lr = opt.learning_rate
