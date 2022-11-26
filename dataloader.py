@@ -69,11 +69,11 @@ def get_pretrain_transform(imgsz):
             ])
 
 
-def get_dataloaders(datadir, batch_size, imgsz=64, use_cuda=True):
+def get_pretrain_dataloaders(datadir, batch_size, imgsz=64, use_cuda=True):
     # Define training and validation data paths
     train_dir = os.path.join(datadir, 'train') 
     valid_dir = os.path.join(datadir, 'val')
-    transform = get_pretrain_transform(64)
+    transform = get_pretrain_transform(imgsz)
 
     fp = open(os.path.join(valid_dir, 'val_annotations.txt'), 'r')
     data = fp.readlines()
@@ -101,3 +101,5 @@ def get_dataloaders(datadir, batch_size, imgsz=64, use_cuda=True):
 
     val_loader_pretrain = generate_dataloader(val_img_dir, "val", batch_size=batch_size,
                                     transform=transform, use_cuda=use_cuda)
+    
+    return train_loader_pretrain, val_loader_pretrain
