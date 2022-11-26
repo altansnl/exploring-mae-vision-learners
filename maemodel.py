@@ -128,6 +128,7 @@ class MAEBackboneViT(nn.Module):
         cls_token = cls_token.repeat(x.shape[0], 1, 1)
         x = torch.cat([cls_token, x], dim=1)
         
+        print(x.dtype)
         x = self.backbone(x)
         x = self.norm(x)
         
