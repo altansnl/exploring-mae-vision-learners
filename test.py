@@ -1,5 +1,4 @@
 import torch
-import torch.nn as nn
 
 t = torch.rand(4, 4, 3)
 print(t)
