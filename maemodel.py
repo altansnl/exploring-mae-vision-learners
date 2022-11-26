@@ -41,6 +41,7 @@ class MAEBackboneViT(nn.Module):
         # TODO: see if we need to change it
         self.num_patches = self.input_layer.num_patches
         pos_embedding = positional_emb_sin_cos(self.num_patches, embed_dim)
+        pos_embedding = torch.reshape(pos_embedding, (patch_size, patch_size, embed_dim))
         self.register_buffer('pos_embedding', pos_embedding, persistent=False)
 
         self.initialize_weights()
@@ -116,6 +117,7 @@ class MAEBackboneViT(nn.Module):
 
         # we don not generate pos embedding for cls token in the first place
         # x = x + self.pos_embedding[:, 1:]
+        print(x.shape, self.pos_embedding.shape)
         x = x + self.pos_embedding
         
         # random mask
