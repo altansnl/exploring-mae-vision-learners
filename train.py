@@ -16,7 +16,7 @@ if __name__ == "__main__":
     parser.add_argument('--patch_size',  type=int, default=16, help='patch size')
     parser.add_argument('--decoder_embed_dim',  type=int, default=512, help='decoder embedding dimensionality')
     parser.add_argument('--decoder_hidden_dim_ratio',  type=float, default=4., help='encoder hidden dimension ratio') 
-    parser.add_argument('--decoder_num_heads',  type=int, default=12, help='decoder number of heads')
+    parser.add_argument('--decoder_num_heads',  type=int, default=16, help='decoder number of heads')
     parser.add_argument('--decoder_num_layers',  type=int, default=8, help='number of layers in the decoder')
     parser.add_argument('--mask_ratio',  type=float, default=.75, help='mask ratio')
 
