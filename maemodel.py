@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from vanilla_vit import img_to_patch, AttentionBlock, PositionalEncoding
 from timm.models.vision_transformer import PatchEmbed, Block
 from utils import *
 
@@ -29,7 +28,7 @@ class MAEBackboneViT(nn.Module):
         # Layers/Networks
         self.input_layer = PatchEmbed(img_dim, patch_size, num_channels, embed_dim)
         self.backbone = nn.Sequential(*[Block(embed_dim, num_heads, hidden_dim_ratio,
-                                              qkv_bias=True, qk_scale=None, norm_layer=layer_norm)
+                                              qkv_bias=True, norm_layer=layer_norm)
                                         for _ in range(num_layers)])
         
         self.norm = layer_norm(embed_dim)
@@ -42,6 +41,10 @@ class MAEBackboneViT(nn.Module):
         # TODO: see if we need to change it
         self.num_patches = self.input_layer.num_patches
         pos_embedding = positional_emb_sin_cos(self.num_patches, embed_dim)
+
+        # can we simply do this to get the correct shape???
+        pos_embedding = torch.reshape(pos_embedding, (patch_size, patch_size, embed_dim))
+
         self.register_buffer('pos_embedding', pos_embedding, persistent=False)
 
         self.initialize_weights()
@@ -59,7 +62,6 @@ class MAEBackboneViT(nn.Module):
         # The use of truncated come from DEiT saying that it is hard to train (maybe too much exploding grads)
         # The sdt seems to come from BEiT but not sure (possible to track)
         torch.nn.init.normal_(self.cls_token, std=.02)
-        torch.nn.init.normal_(self.mask_token, std=.02)
 
         # initialize nn.Linear and nn.LayerNorm
         self.apply(self._init_weights)
@@ -88,7 +90,8 @@ class MAEBackboneViT(nn.Module):
             _type_: _description_
         """
         B, T, E = x.shape
-        random_values = torch.rand(B, T, device=x.device)
+
+        # random_values = torch.rand(B, T, device=x.device)
         
         num_keep = int(T * (1 - self.mask_ratio))
 
@@ -109,10 +112,16 @@ class MAEBackboneViT(nn.Module):
     
     def forward(self, x):
         # Patchify and embed
+        print(type(x), type(self.input_layer))
         x = self.input_layer(x)
         
         # add positional emb (skiping cls)
-        x = x + self.pos_embedding[:, 1:]
+        # print(x.shape, self.pos_embedding[:, 1:].shape, self.pos_embedding.shape)
+
+        # we don not generate pos embedding for cls token in the first place
+        # x = x + self.pos_embedding[:, 1:]
+        print(x.shape, self.pos_embedding.shape)
+        x = x + self.pos_embedding
         
         # random mask
         x, mask, undo_token_perm = self.mask_rand(x)
@@ -122,6 +131,7 @@ class MAEBackboneViT(nn.Module):
         cls_token = cls_token.repeat(x.shape[0], 1, 1)
         x = torch.cat([cls_token, x], dim=1)
         
+        print(x.dtype)
         x = self.backbone(x)
         x = self.norm(x)
         
@@ -145,7 +155,7 @@ class MAEDecoderViT(nn.Module):
         # Layers/Networks
         self.input_layer = nn.Linear(enc_embed_dim, embed_dim)
         self.neck = nn.Sequential(*[Block(embed_dim, num_heads, hidden_dim_ratio,
-                                            qkv_bias=True, qk_scale=None, norm_layer=layer_norm)
+                                            qkv_bias=True, norm_layer=layer_norm)
                                     for _ in range(num_layers)])
         
         self.norm = layer_norm(embed_dim)
@@ -165,7 +175,7 @@ class MAEDecoderViT(nn.Module):
         # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
         # The use of truncated come from DEiT saying that it is hard to train (maybe too much exploding grads)
         # The sdt seems to come from BEiT but not sure (possible to track)
-        torch.nn.init.normal_(self.cls_token, std=.02)
+        # torch.nn.init.normal_(self.cls_token, std=.02)
         torch.nn.init.normal_(self.mask_token, std=.02)
 
         # initialize nn.Linear and nn.LayerNorm
@@ -188,7 +198,7 @@ class MAEDecoderViT(nn.Module):
         x = self.input_layer(x)
         
         # Add mask token + positional
-        mask_token = self.mask_toke.repeat(x.shape[0],
+        mask_token = self.mask_token.repeat(x.shape[0],
                                            self.num_patches-(x.shape[1]-1),
                                            1)
         # concat all excluding 

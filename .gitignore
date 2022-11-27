@@ -3,3 +3,4 @@ tiny-imagenet-200
 /env
 /models
 /tiny-imagenet*
+__pycache__/

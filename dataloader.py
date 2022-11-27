@@ -10,7 +10,6 @@ from torchvision import datasets
 
 DATA_DIR = './tiny-imagenet-200' # Original images come in shapes of [3,64,64]
 
-
 # Functions to display single or a batch of sample images
 def imshow(img):
     npimg = img.numpy()
@@ -84,8 +83,8 @@ def get_pretrain_dataloaders(datadir, batch_size, imgsz=64, use_cuda=True):
     for line in data:
         words = line.split('\t')
         val_img_dict[words[0]] = words[1]
-    fp.close()
 
+    fp.close()
     val_img_dir = os.path.join(valid_dir, 'images')
 
     for img, folder in val_img_dict.items():
