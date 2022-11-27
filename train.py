@@ -18,16 +18,23 @@ def pretrain_epoch(
     print_frequency: int,
 ):
     model.train(True)
-    optimizer.zero_grad()
     iter = 0
     for (samples, _) in data_loader:
+        # TODO: use learning rate scheduler
         samples = samples.to(device, non_blocking=True)
+        
+        # Facebook accumulates gradients of various steps
+        # We will try without it for simplicity
+        optimizer.zero_grad()
         
         # mixed precision for forward & loss
         # not recommended for backwards pass
-        # with torch.cuda.amp.autocast():
-        x, mask = model.forward(samples)
-        loss = model.loss(samples, x, mask)
+        with torch.cuda.amp.autocast():
+            x, mask = model.forward(samples)
+            loss = model.loss(samples, x, mask)
+            
+        loss.backward()
+        optimizer.step()
 
         loss_value = loss.item()
 
@@ -36,7 +43,8 @@ def pretrain_epoch(
             sys.exit(1)
 
         # not sure if needed
-        torch.cuda.synchronize()
+        # I think this is just for multi-thread gpu 
+        # torch.cuda.synchronize()
         if iter % print_frequency == 0:
             print(f'loss value in epoch {current_epoch}: {loss_value}')
         iter += 1

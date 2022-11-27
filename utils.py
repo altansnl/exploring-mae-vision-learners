@@ -1,28 +1,29 @@
 import torch
 import numpy as np
 
-def positional_emb_sin_cos(num_patches, embed_dim):
-    # Create matrix of [SeqLen, HiddenDim] representing the positional encoding for max_len inputs
+# --------------------------------------------------------
+# 2D sine-cosine position embedding
+# References:
+# Transformer: https://github.com/tensorflow/models/blob/master/official/nlp/transformer/model_utils.py
+# MoCo v3: https://github.com/facebookresearch/moco-v3
+# --------------------------------------------------------
+def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
     """
-    print((num_patches,num_patches))
-    pos_embedding = torch.zeros(num_patches,num_patches, embed_dim)
-    position = torch.arange(0, (num_patches,num_patches), dtype=torch.float).unsqueeze(1)
-    div_term = torch.exp(torch.arange(0, embed_dim, 2).float() * (-np.log(10000.0) / embed_dim))
-    pos_embedding[:, 0::2] = torch.sin(position * div_term)
-    pos_embedding[:, 1::2] = torch.cos(position * div_term)
-    pos_embedding = pos_embedding.unsqueeze(0)
+    grid_size: int of the grid height and width
+    return:
+    pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
     """
+    grid_h = np.arange(grid_size, dtype=np.float32)
+    grid_w = np.arange(grid_size, dtype=np.float32)
+    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+    grid = np.stack(grid, axis=0)
 
-    # using their implementation of positional embedding
-    grid_h = np.arange(num_patches, dtype=np.float32)
-    grid_w = np.arange(num_patches, dtype=np.float32)
-    grid = np.meshgrid(grid_w, grid_h)
-    grid = np.stack(grid, axis=0)    
-
-    grid = grid.reshape([2, 1, num_patches, num_patches])
+    grid = grid.reshape([2, 1, grid_size, grid_size])
     pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
-    print(type(pos_embed), pos_embed.shape)
-    return torch.from_numpy(pos_embed)
+    if cls_token:
+        pos_embed = np.concatenate([np.zeros([1, embed_dim]), pos_embed], axis=0)
+    return pos_embed
+
 
 def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     assert embed_dim % 2 == 0
@@ -32,7 +33,6 @@ def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
     emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
 
     emb = np.concatenate([emb_h, emb_w], axis=1) # (H*W, D)
-
     return emb
 
 
@@ -55,6 +55,39 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
 
     emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
+
+
+# --------------------------------------------------------
+# Interpolate position embeddings for high-resolution
+# References:
+# DeiT: https://github.com/facebookresearch/deit
+# --------------------------------------------------------
+
+# Needed when finetuning in diferent size images
+def interpolate_pos_embed(model, checkpoint_model):
+    if 'pos_embed' in checkpoint_model:
+        pos_embed_checkpoint = checkpoint_model['pos_embed']
+        embedding_size = pos_embed_checkpoint.shape[-1]
+        num_patches = model.patch_embed.num_patches
+        num_extra_tokens = model.pos_embed.shape[-2] - num_patches
+        # height (== width) for the checkpoint position embedding
+        orig_size = int((pos_embed_checkpoint.shape[-2] - num_extra_tokens) ** 0.5)
+        # height (== width) for the new position embedding
+        new_size = int(num_patches ** 0.5)
+        # class_token and dist_token are kept unchanged
+        if orig_size != new_size:
+            print("Position interpolate from %dx%d to %dx%d" % (orig_size, orig_size, new_size, new_size))
+            extra_tokens = pos_embed_checkpoint[:, :num_extra_tokens]
+            # only the position tokens are interpolated
+            pos_tokens = pos_embed_checkpoint[:, num_extra_tokens:]
+            pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size, embedding_size).permute(0, 3, 1, 2)
+            pos_tokens = torch.nn.functional.interpolate(
+                pos_tokens, size=(new_size, new_size), mode='bicubic', align_corners=False)
+            pos_tokens = pos_tokens.permute(0, 2, 3, 1).flatten(1, 2)
+            new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
+            checkpoint_model['pos_embed'] = new_pos_embed
+
+
 
 def img_to_patch(x: torch.Tensor, patch_size):
     """

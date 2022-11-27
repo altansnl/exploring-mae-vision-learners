@@ -24,6 +24,7 @@ class MAEBackboneViT(nn.Module):
         super().__init__()
         
         self.patch_size = patch_size
+        
 
         # Layers/Networks
         self.input_layer = PatchEmbed(img_dim, patch_size, num_channels, embed_dim)
@@ -38,18 +39,16 @@ class MAEBackboneViT(nn.Module):
         self.cls_token = nn.Parameter(torch.zeros(1, 1 ,embed_dim))
         
         # Facebook does a resize of this encodings
-        # TODO: see if we need to change it
         self.num_patches = self.input_layer.num_patches
-        pos_embedding = positional_emb_sin_cos(self.num_patches, embed_dim)
-
-        # can we simply do this to get the correct shape???
-        pos_embedding = torch.reshape(pos_embedding, (patch_size, patch_size, embed_dim))
-
-        self.register_buffer('pos_embedding', pos_embedding, persistent=False)
+        self.pos_embedding = nn.Parameter(torch.zeros(1, self.num_patches  + 1, embed_dim), requires_grad=False)  
 
         self.initialize_weights()
     
     def initialize_weights(self):
+        
+        pos_embedding = get_2d_sincos_pos_embed(self.pos_embedding.shape[-1], int(self.num_patches**.5), cls_token=True)
+        self.pos_embedding.data.copy_(torch.from_numpy(pos_embedding).float().unsqueeze(0))
+        
         # initialize patch_embed like nn.Linear (instead of nn.Conv2d)
         # nn.Conv2d uses He initialization because it is better for ReLU
         # But enbeding layer doesnt have activation -> So we want symetric dist
@@ -111,6 +110,7 @@ class MAEBackboneViT(nn.Module):
         return x_masked, mask, undo_token_perm
     
     def forward(self, x):
+        print(x.shape, self.patch_size)
         # Patchify and embed
         print(type(x), type(self.input_layer))
         x = self.input_layer(x)
@@ -119,16 +119,17 @@ class MAEBackboneViT(nn.Module):
         # print(x.shape, self.pos_embedding[:, 1:].shape, self.pos_embedding.shape)
 
         # we don not generate pos embedding for cls token in the first place
-        # x = x + self.pos_embedding[:, 1:]
+        x = x + self.pos_embedding[:, 1:]
         print(x.shape, self.pos_embedding.shape)
-        x = x + self.pos_embedding
         
         # random mask
         x, mask, undo_token_perm = self.mask_rand(x)
+        print(x.shape)
         
         # Add cls token + positional
         cls_token = self.cls_token + self.pos_embedding[:, 0]
         cls_token = cls_token.repeat(x.shape[0], 1, 1)
+        print(cls_token.shape)
         x = torch.cat([cls_token, x], dim=1)
         
         print(x.dtype)
@@ -163,8 +164,8 @@ class MAEDecoderViT(nn.Module):
         # Parameters/Embeddings
         self.mask_token = nn.Parameter(torch.zeros(1, 1 ,embed_dim))
         
-        pos_embedding = positional_emb_sin_cos(num_patches, embed_dim)
-        self.register_buffer('pos_embedding', pos_embedding, persistent=False)
+        self.pos_embedding = nn.Parameter(torch.zeros(1, self.num_patches  + 1, embed_dim), requires_grad=False)  
+        
         
         # Since we have lower dimentional token we need to recover original dimensionality
         self.pred_proj = nn.Linear(embed_dim, patch_size**2 * num_channels)
@@ -172,6 +173,9 @@ class MAEDecoderViT(nn.Module):
         self.initialize_weights()
         
     def initialize_weights(self):
+        pos_embedding = get_2d_sincos_pos_embed(self.pos_embedding.shape[-1], int(self.num_patches**.5), cls_token=True)
+        self.pos_embedding.data.copy_(torch.from_numpy(pos_embedding).float().unsqueeze(0))
+        
         # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
         # The use of truncated come from DEiT saying that it is hard to train (maybe too much exploding grads)
         # The sdt seems to come from BEiT but not sure (possible to track)
@@ -201,17 +205,20 @@ class MAEDecoderViT(nn.Module):
         mask_token = self.mask_token.repeat(x.shape[0],
                                            self.num_patches-(x.shape[1]-1),
                                            1)
+        
+        print("#"*10)
+        print(x.shape, mask_token.shape)
         # concat all excluding 
         x_mask = torch.cat([x[:, 1:], mask_token], dim=1)
-        
+        print(x_mask.shape)
         # recover order
         # apply same permutation to all elements in the same token
         undo_token_perm = undo_token_perm.unsqueeze(-1).repeat(1, 1, x.shape[2])
-        x_mask = x_mask.gather(1,undo_token_perm)
-        
+        x_mask = x_mask.gather(1, undo_token_perm)
+        print(x_mask.shape, x.shape)
         # need to put back cls in order to use Block
-        x = torch.cat([x[:, 0], x_mask], dim=1)
-        
+        x = torch.cat([x[:, :1], x_mask], dim=1)
+        print(x.shape)
         # add positional emb 
         x = x + self.pos_embedding
         
@@ -302,14 +309,14 @@ class MAEPretainViT(nn.Module):
         targets = img_to_patch(targets, patch_size)
         
         if norm_tar:
-            mean = target.mean(dim=-1, keepdim=True)
-            var = target.var(dim=-1, keepdim=True)
-            target = (target - mean) / (var + 1.e-5)**.5
+            mean = torch.mean(targets, dim=-1, keepdim=True)
+            var = torch.var(targets, dim=-1, keepdim=True)
+            targets = (targets - mean) / (var + 1.e-5)**.5
         
-        loss = (pred - target) ** 2
-        loss = loss.mean(dim=-1)  
+        loss = (pred - targets) ** 2
+        loss = torch.mean(loss, dim=-1)  
 
-        loss = (loss * mask).sum() / mask.sum()  
+        loss = torch.sum(loss * mask) / torch.sum(mask)  
         return loss
         
         
