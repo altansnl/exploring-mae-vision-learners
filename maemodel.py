@@ -41,7 +41,10 @@ class MAEBackboneViT(nn.Module):
         # TODO: see if we need to change it
         self.num_patches = self.input_layer.num_patches
         pos_embedding = positional_emb_sin_cos(self.num_patches, embed_dim)
+
+        # can we simply do this to get the correct shape???
         pos_embedding = torch.reshape(pos_embedding, (patch_size, patch_size, embed_dim))
+
         self.register_buffer('pos_embedding', pos_embedding, persistent=False)
 
         self.initialize_weights()

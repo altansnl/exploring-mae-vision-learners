@@ -16,7 +16,7 @@ def positional_emb_sin_cos(num_patches, embed_dim):
     # using their implementation of positional embedding
     grid_h = np.arange(num_patches, dtype=np.float32)
     grid_w = np.arange(num_patches, dtype=np.float32)
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
+    grid = np.meshgrid(grid_w, grid_h)
     grid = np.stack(grid, axis=0)    
 
     grid = grid.reshape([2, 1, num_patches, num_patches])
