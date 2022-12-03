@@ -4,3 +4,4 @@ tiny-imagenet-200
 /models
 /tiny-imagenet*
 __pycache__/
+/results

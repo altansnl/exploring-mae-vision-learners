@@ -1,6 +1,9 @@
 import torch
 import numpy as np
 import math
+from torchvision import transforms
+from torchvision.utils import save_image
+import os
 
 # --------------------------------------------------------
 # 2D sine-cosine position embedding
@@ -105,16 +108,20 @@ def img_to_patch(x: torch.Tensor, patch_size):
     x = x.flatten(2,4)              # [B, H'*W', C*p_H*p_W]
     return x
     
-def patch_to_img(x: torch.Tensor, patch_size, flatten_channels=True):
+def patch_to_img(x: torch.Tensor, patch_size):
     """
     Inputs:
-        x - torch.Tensor representing the image of shape [B, C, H, W]
-        patch_size - Number of pixels per dimension of the patches (integer)
-        flatten_channels - If True, the patches will be returned in a flattened format
-                        as a feature vector instead of a image grid.
+        x: (N, L, patch_size**2 *3)
+        imgs: (N, 3, H, W)
     """
-    # TODO: idk when to use it tho?
-    pass
+    p = patch_size
+    h = w = int(x.shape[1]**.5)
+    assert h * w == x.shape[1]
+    
+    x = x.reshape(shape=(x.shape[0], h, w, p, p, 3))
+    x = torch.einsum('nhwpqc->nchpwq', x)
+    imgs = x.reshape(shape=(x.shape[0], 3, h * p, h * p))
+    return imgs
 
 
 def adjust_learning_rate(optimizer, epoch, args):
@@ -130,3 +137,16 @@ def adjust_learning_rate(optimizer, epoch, args):
         else:
             param_group["lr"] = lr
     return lr
+
+    
+def save_images_tensors(imgs: torch.Tensor, dst_dir:str, name:str, mean=[0.485, 0.456, 0.406], var=[0.229, 0.224, 0.225]):
+    invTrans = transforms.Compose([ transforms.Normalize(mean = [ 0., 0., 0. ],
+                                                     std = 1/np.array(var)),
+                                transforms.Normalize(mean = -np.array(mean),
+                                                     std = [ 1., 1., 1. ]),
+                               ])
+    inv_tensor = invTrans(imgs)
+    fpath = os.path.join(dst_dir, name)
+    save_image(inv_tensor, fpath)
+
+
