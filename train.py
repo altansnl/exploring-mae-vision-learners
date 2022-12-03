@@ -1,11 +1,13 @@
 from maemodel import MAEPretainViT
 from dataloader import get_pretrain_dataloaders
+from utils import adjust_learning_rate
 import argparse
 import torch
 from typing import Iterable
 import timm.optim.optim_factory as optim_factory
 import math
 import sys
+import time
 
 DATA_DIR = './tiny-imagenet-200'
 
@@ -16,11 +18,14 @@ def pretrain_epoch(
     device: torch.device,
     current_epoch: int,
     print_frequency: int,
+    args
 ):
     model.train(True)
     iter = 0
-    for (samples, _) in data_loader:
-        # TODO: use learning rate scheduler
+    t0 = time.time()
+    for iteration, (samples, _) in enumerate(data_loader):
+        lr = adjust_learning_rate(optimizer, iteration / len(data_loader) + current_epoch, args)
+
         samples = samples.to(device, non_blocking=True)
         
         # Facebook accumulates gradients of various steps
@@ -46,8 +51,11 @@ def pretrain_epoch(
         # I think this is just for multi-thread gpu 
         # torch.cuda.synchronize()
         if iter % print_frequency == 0:
-            print(f'loss value in epoch {current_epoch}: {loss_value}')
+            print(f'loss value in epoch {current_epoch}, step {iter}: {round(loss_value, 5)} with learning rate {round(lr, 7)}')
         iter += 1
+
+    t1 = time.time()
+    print(f"Epoch {current_epoch} took {round(t1-t0, 2)} seconds.\n")
 
 
 
@@ -71,8 +79,10 @@ if __name__ == "__main__":
     parser.add_argument('--decoder_num_layers',  type=int, default=8, help='number of layers in the decoder')
     parser.add_argument('--mask_ratio',  type=float, default=.75, help='mask ratio')
     parser.add_argument('--batch_size',  type=int, default=64, help='batch size')
-    parser.add_argument('--epoch_count',  type=int, default=1, help='epoch_count')
-    parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
+    parser.add_argument('--epoch_count',  type=int, default=64, help='epoch_count')
+    parser.add_argument('--warmup_epochs',  type=int, default=6, help='warmup epochs')
+    parser.add_argument('--learning_rate', type=float, default=1e-4, help='learning rate')
+    parser.add_argument('--min_learning_rate', type=float, default=0., help='lower lr bound for cyclic schedulers that hit 0')
     parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
 
     opt = parser.parse_args()
@@ -99,7 +109,8 @@ if __name__ == "__main__":
     param_groups = optim_factory.add_weight_decay(mae, opt.weight_decay)
     epoch_count = opt.epoch_count
     lr = opt.learning_rate * opt.batch_size / 256
+    opt.learning_rate = lr
     optimizer = torch.optim.AdamW(param_groups, lr=opt.learning_rate, betas=(0.9, 0.95))
 
     for epoch in range(epoch_count):
-        pretrain_epoch(mae, train_loader_pretrain, optimizer, device, epoch, 200)
+        pretrain_epoch(mae, train_loader_pretrain, optimizer, device, epoch, 200, opt)
