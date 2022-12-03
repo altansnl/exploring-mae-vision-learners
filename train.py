@@ -13,15 +13,18 @@ import math
 import sys
 import os
 import time
+import json
 
 DATA_DIR = './tiny-imagenet-200'
 RESULTS_DIR = "./results/pretraining"
+MODELS_DIR = "./models"
 
 
 def pretrain_epoch(
     model: torch.nn.Module,
     data_loader: Iterable,
     optimizer: torch.optim.Optimizer,
+    scaler,
     device: torch.device,
     current_epoch: int,
     print_frequency: int,
@@ -32,7 +35,6 @@ def pretrain_epoch(
     t0 = time.time()
     for iter, (samples, _) in enumerate(data_loader):
         lr = adjust_learning_rate(optimizer, iter / len(data_loader) + current_epoch, args)
-
         samples = samples.to(device, non_blocking=True)
         
         # Facebook accumulates gradients of various steps
@@ -44,9 +46,10 @@ def pretrain_epoch(
         with torch.cuda.amp.autocast():
             x, mask = model.forward(samples)
             loss = model.loss(samples, x, mask)
-            
-        loss.backward()
-        optimizer.step()
+        
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
 
         loss_value = loss.item()
         losses.append(loss_value)
@@ -85,18 +88,16 @@ def validate_epoch(
         loss_value = loss.item()
         losses.append(loss_value)
 
-    recon_imgs = patch_to_img(x, args.patch_size)
     if save_imgs:
         result_dir =  os.path.join(RESULTS_DIR, args.exp_name)
         try:
             os.mkdir(result_dir)
         except FileExistsError:
             pass
-        save_images_tensors(recon_imgs, result_dir, str(current_epoch) + "_reconstruction.png")
-        save_images_tensors(samples, result_dir, str(current_epoch) + "_input.png")
+        save_images_tensors(samples, x, mask, args.patch_size, result_dir, str(current_epoch))
     avg_loss = sum(losses)/len(losses)
     print(f"Avg. validation loss for epoch {current_epoch} was {round(avg_loss, 5)}.")
-    return losses, recon_imgs
+    return losses, avg_loss
 
 
 
@@ -114,14 +115,14 @@ if __name__ == "__main__":
     parser.add_argument('--num_layers',  type=int, default=12, help='number of transformer layers in the encoder')
     parser.add_argument('--patch_size',  type=int, default=8, help='patch size')
     parser.add_argument('--decoder_embed_dim',  type=int, default=512, help='decoder embedding dimensionality')
-    parser.add_argument('--decoder_hidden_dim_ratio',  type=float, default=4., help='encoder hidden dimension ratio') 
+    parser.add_argument('--decoder_hidden_dim_ratio',  type=float, default=4., help='decoder hidden dimension ratio') 
     parser.add_argument('--decoder_num_heads',  type=int, default=16, help='decoder number of heads')
     parser.add_argument('--decoder_num_layers',  type=int, default=8, help='number of layers in the decoder')
     parser.add_argument('--mask_ratio',  type=float, default=.75, help='mask ratio')
-    parser.add_argument('--batch_size',  type=int, default=64, help='batch size')
-    parser.add_argument('--epoch_count',  type=int, default=15, help='epoch_count')
-    parser.add_argument('--warmup_epochs',  type=int, default=3, help='warmup epochs')
-    parser.add_argument('--learning_rate', type=float, default=1e-4, help='learning rate')
+    parser.add_argument('--batch_size',  type=int, default=128, help='batch size')
+    parser.add_argument('--epoch_count',  type=int, default=350, help='epoch_count')
+    parser.add_argument('--warmup_epochs',  type=int, default=35, help='warmup epochs')
+    parser.add_argument('--learning_rate', type=float, default=1.5e-4, help='learning rate')
     parser.add_argument('--min_learning_rate', type=float, default=0., help='lower lr bound for cyclic schedulers that hit 0')
     parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
     parser.add_argument('--exp_name', type=str, default="pretrain_test", help='Name of the experiment, for tracking purposes')
@@ -154,12 +155,29 @@ if __name__ == "__main__":
     lr = opt.learning_rate * opt.batch_size / 256
     opt.learning_rate = lr
     optimizer = torch.optim.AdamW(param_groups, lr=opt.learning_rate, betas=(0.9, 0.95))
+    scaler = torch.cuda.amp.GradScaler(enabled=True)
 
     train_losses = []
     valid_losses = []
+    best_val_loss = 1000
+    
     for epoch in range(epoch_count):
-        tloss = pretrain_epoch(mae, train_loader_pretrain, optimizer, device, epoch, 100, opt)
-        vloss, _ = validate_epoch(mae, val_loader_pretrain, device, epoch, opt)
+        tloss = pretrain_epoch(mae, train_loader_pretrain, optimizer, scaler, device, epoch, 100, opt)
+        vloss, avg_loss = validate_epoch(mae, val_loader_pretrain, device, epoch, opt)  # remove
+        # Saving the best model along with its hyperparameters
+        if avg_loss < best_val_loss:
+            best_val_loss = avg_loss
+            model_dir = os.path.join(MODELS_DIR, opt.exp_name)
+            try:
+                os.mkdir(model_dir)
+            except FileExistsError:
+                pass
+            torch.save(mae, os.path.join(model_dir, "mae"))
+            with open(os.path.join(model_dir, 'mae_args.txt'), 'w') as f:
+                dictionary_args = opt.__dict__
+                dictionary_args["current_epoch"] = epoch
+                dictionary_args["validation_loss"] = avg_loss
+                json.dump(dictionary_args, f, indent=2)
         train_losses += tloss
         valid_losses += vloss
         print()
@@ -167,11 +185,16 @@ if __name__ == "__main__":
     kernel_size = 10
     kernel = np.ones(kernel_size) / kernel_size
 
-    train_losses = np.convolve(np.array(train_losses), kernel, mode='same')
-    plt.plot(list(range(len(train_losses))), train_losses)
-    plt.show()
-    train_losses = np.convolve(np.array(valid_losses), kernel, mode='same')
-    plt.plot(list(range(len(valid_losses))), valid_losses)
-    plt.show()
+    train_losses = np.convolve(np.array(train_losses), kernel, mode='valid')
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(train_losses)), train_losses, label="train loss")
+    valid_losses = np.convolve(np.array(valid_losses), kernel, mode='valid')
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(valid_losses)), valid_losses, label="validation loss")
+    plt.legend()
+    plt.grid()
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss (MSE)")
+    plt.title("Self-supervised pretraining")
+    plt.tight_layout()
+    plt.savefig(os.path.join(model_dir, "sst_loss.png"))
 
 

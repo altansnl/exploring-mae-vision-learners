@@ -93,19 +93,18 @@ def interpolate_pos_embed(model, checkpoint_model):
 
 
 
-def img_to_patch(x: torch.Tensor, patch_size):
+def img_to_patch(imgs: torch.Tensor, patch_size):
     """
-    Inputs:
-        x - torch.Tensor representing the image of shape [B, C, H, W]
-        patch_size - Number of pixels per dimension of the patches (integer)
-        flatten_channels - If True, the patches will be returned in a flattened format
-                        as a feature vector instead of a image grid.
+    imgs: (N, 3, H, W)
+    x: (N, L, patch_size**2 *3)
     """
-    B, C, H, W = x.shape
-    x = x.reshape(B, C, H//patch_size, patch_size, W//patch_size, patch_size)
-    x = x.permute(0, 2, 4, 1, 3, 5) # [B, H', W', C, p_H, p_W]
-    x = x.flatten(1,2)              # [B, H'*W', C, p_H, p_W]
-    x = x.flatten(2,4)              # [B, H'*W', C*p_H*p_W]
+    p = patch_size
+    assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
+
+    h = w = imgs.shape[2] // p
+    x = imgs.reshape(shape=(imgs.shape[0], 3, h, p, w, p))
+    x = torch.einsum('nchpwq->nhwpqc', x)
+    x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * 3))
     return x
     
 def patch_to_img(x: torch.Tensor, patch_size):
@@ -139,14 +138,26 @@ def adjust_learning_rate(optimizer, epoch, args):
     return lr
 
     
-def save_images_tensors(imgs: torch.Tensor, dst_dir:str, name:str, mean=[0.485, 0.456, 0.406], var=[0.229, 0.224, 0.225]):
-    invTrans = transforms.Compose([ transforms.Normalize(mean = [ 0., 0., 0. ],
+def save_images_tensors(imgs: torch.Tensor, recon: torch.Tensor, mask: torch.Tensor, patch_size: int,
+                        dst_dir:str, name:str, 
+                        mean=[0.485, 0.456, 0.406], var=[0.229, 0.224, 0.225]):
+
+    recon = torch.einsum('abc->cab', recon)
+    patchified_imgs = torch.einsum('abc->cab', img_to_patch(imgs, patch_size))
+    recon_masked = mask * recon + patchified_imgs * (1-mask)
+    recon_masked = torch.einsum('cab->abc', recon_masked)
+    recon_masked = patch_to_img(recon_masked, patch_size)
+
+    invTrans = transforms.Compose([transforms.Normalize(mean = [ 0., 0., 0. ],
                                                      std = 1/np.array(var)),
                                 transforms.Normalize(mean = -np.array(mean),
                                                      std = [ 1., 1., 1. ]),
                                ])
-    inv_tensor = invTrans(imgs)
-    fpath = os.path.join(dst_dir, name)
-    save_image(inv_tensor, fpath)
+    imgs = invTrans(patch_to_img(torch.einsum('cab->abc', patchified_imgs), patch_size))
+    recon = invTrans(recon_masked)
+    fpath = os.path.join(dst_dir, name + "_reconstruction.png")
+    save_image(recon, fpath)
+    fpath = os.path.join(dst_dir, name + "_input.png")
+    save_image(imgs, fpath, normalize=True)
 
 
