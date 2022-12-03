@@ -70,7 +70,7 @@ if __name__ == "__main__":
     parser.add_argument('--decoder_num_heads',  type=int, default=16, help='decoder number of heads')
     parser.add_argument('--decoder_num_layers',  type=int, default=8, help='number of layers in the decoder')
     parser.add_argument('--mask_ratio',  type=float, default=.75, help='mask ratio')
-    parser.add_argument('--batch_size',  type=int, default=16, help='batch size')
+    parser.add_argument('--batch_size',  type=int, default=64, help='batch size')
     parser.add_argument('--epoch_count',  type=int, default=1, help='epoch_count')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
@@ -98,8 +98,8 @@ if __name__ == "__main__":
     mae.to(device)
     param_groups = optim_factory.add_weight_decay(mae, opt.weight_decay)
     epoch_count = opt.epoch_count
-    lr = opt.learning_rate
+    lr = opt.learning_rate * opt.batch_size / 256
     optimizer = torch.optim.AdamW(param_groups, lr=opt.learning_rate, betas=(0.9, 0.95))
 
     for epoch in range(epoch_count):
-        pretrain_epoch(mae, train_loader_pretrain, optimizer, device, epoch, 20)
+        pretrain_epoch(mae, train_loader_pretrain, optimizer, device, epoch, 200)

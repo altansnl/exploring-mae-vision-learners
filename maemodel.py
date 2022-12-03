@@ -110,9 +110,9 @@ class MAEBackboneViT(nn.Module):
         return x_masked, mask, undo_token_perm
     
     def forward(self, x):
-        print(x.shape, self.patch_size)
+      
         # Patchify and embed
-        print(type(x), type(self.input_layer))
+       
         x = self.input_layer(x)
         
         # add positional emb (skiping cls)
@@ -120,19 +120,19 @@ class MAEBackboneViT(nn.Module):
 
         # we don not generate pos embedding for cls token in the first place
         x = x + self.pos_embedding[:, 1:]
-        print(x.shape, self.pos_embedding.shape)
+      
         
         # random mask
         x, mask, undo_token_perm = self.mask_rand(x)
-        print(x.shape)
+       
         
         # Add cls token + positional
         cls_token = self.cls_token + self.pos_embedding[:, 0]
         cls_token = cls_token.repeat(x.shape[0], 1, 1)
-        print(cls_token.shape)
+      
         x = torch.cat([cls_token, x], dim=1)
         
-        print(x.dtype)
+      
         x = self.backbone(x)
         x = self.norm(x)
         
@@ -206,19 +206,17 @@ class MAEDecoderViT(nn.Module):
                                            self.num_patches-(x.shape[1]-1),
                                            1)
         
-        print("#"*10)
-        print(x.shape, mask_token.shape)
-        # concat all excluding 
+   
         x_mask = torch.cat([x[:, 1:], mask_token], dim=1)
-        print(x_mask.shape)
+     
         # recover order
         # apply same permutation to all elements in the same token
         undo_token_perm = undo_token_perm.unsqueeze(-1).repeat(1, 1, x.shape[2])
         x_mask = x_mask.gather(1, undo_token_perm)
-        print(x_mask.shape, x.shape)
+       
         # need to put back cls in order to use Block
         x = torch.cat([x[:, :1], x_mask], dim=1)
-        print(x.shape)
+        
         # add positional emb 
         x = x + self.pos_embedding
         
