@@ -3,14 +3,14 @@ from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from torchvision import transforms
 import PIL
 
-def build_transform(is_train, args):
+def build_transform(is_train, imgsz, args):
     mean = IMAGENET_DEFAULT_MEAN
     std = IMAGENET_DEFAULT_STD
     # train transform
     if is_train:
         # this should always dispatch to transforms_imagenet_train
         transform = create_transform(
-            input_size=args.input_size,
+            input_size=imgsz,
             is_training=True,
             color_jitter=args.color_jitter,
             auto_augment=args.aa,
