@@ -14,6 +14,7 @@ import math
 import sys
 from collections import OrderedDict
 import json
+from timm.models.layers import trunc_normal_
 
 
 DATA_DIR = './tiny-imagenet-200'
@@ -166,6 +167,11 @@ if __name__ == "__main__":
             drop_path_rate=opt.drop_path
         )
     
+    msg = model.load_state_dict(checkpoint_model, strict=False)
+    print(msg)
+    # manually initialize fc layer [Not said in paper]
+    trunc_normal_(model.head.weight, std=2e-5)
+    
     model.to(device)
 
     param_groups = param_groups_lrd(model, opt.weight_decay,
@@ -176,8 +182,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(param_groups, lr=opt.learning_rate)
     loss_scaler = torch.cuda.amp.GradScaler(enabled=True)
 
-    msg = model.load_state_dict(checkpoint_model, strict=False)
-    print(msg)
+  
     
     criterion = torch.nn.CrossEntropyLoss()
     if mixup is not None:
