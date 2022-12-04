@@ -3,17 +3,18 @@ from dataloader import get_finetune_dataloaders
 from timm.models.vision_transformer import VisionTransformer
 from timm.data import Mixup
 from timm.loss import SoftTargetCrossEntropy
-from functools import partial
+import matplotlib.pyplot as plt
 from typing import Iterable, Optional
 from utils import adjust_learning_rate, param_groups_lrd 
 import time
 import torch
-import torch.nn as nn
 import os
 import math
 import sys
 from collections import OrderedDict
 import json
+from timm.utils import accuracy
+import numpy as np
 from timm.models.layers import trunc_normal_
 
 
@@ -72,14 +73,41 @@ def finetune_epoch(
     print(f"Epoch {epoch} took {round(t1-t0, 2)} seconds.")
     return losses
 
+@torch.no_grad()
+def validate_epoch(
+    model: torch.nn.Module,
+    data_loader: Iterable,
+    device: torch.device,
+    epoch: int
+):
+    model.eval()
+    criterion = torch.nn.CrossEntropyLoss()
+    losses = []
+    accuracies = []
+    for _, (samples, targets) in enumerate(data_loader):
+        samples = samples.to(device, non_blocking=True)
+        targets = targets.to(device, non_blocking=True)
+        outputs = model(samples)
+        loss = criterion(outputs, targets)
+        losses.append(loss.item())
+        acc1, acc5 = accuracy(outputs, targets, topk=(1, 5))
+        accuracies.append(acc1.item())
+
+    avg_loss = sum(losses)/len(losses)
+    avg_accuracy = sum(accuracies)/len(accuracies)
+
+    print(f"validation: {epoch}, loss:{round(avg_loss, 5)}, acc:{round(avg_accuracy, 5)}")
+    return avg_loss, avg_accuracy
+
 if __name__ == "__main__":    
     
     # options for training
     parser = argparse.ArgumentParser()
 
     # default parameter setting for Vit-B
-    parser.add_argument('--epoch_count',  type=int, default=350, help='epoch_count')
-    parser.add_argument('--exp_name', type=str, default="pretrain_test", help='Name of the experiment, for tracking purposes')
+    parser.add_argument('--epoch_count',  type=int, default=1, help='epoch_count')
+    parser.add_argument('--pretrain_exp_name', type=str, default="pretrain_test", help='Name of the experiment, for tracking purposes')
+    parser.add_argument('--finetune_exp_name', type=str, default="finetune_test", help='Name of the experiment, for tracking purposes')
     parser.add_argument('--nb_classes', default=200, type=int, help='number of the classification types')
     parser.add_argument('--batch_size',  type=int, default=128, help='batch size')
     parser.add_argument('--drop_path', type=float, default=0.1, metavar='PCT', help='Drop path rate (default: 0.1)')
@@ -111,11 +139,12 @@ if __name__ == "__main__":
     opt = parser.parse_args()
 
     # load pre-trained model
-    model_dir = os.path.join(MODELS_DIR, opt.exp_name)
+    model_dir = os.path.join(MODELS_DIR, opt.pretrain_exp_name)
     args_pre = json.load(open(os.path.join(model_dir, "mae_args.json"), "r"))
+    opt.input_size = args_pre["img_dim"]
     checkpoint_model = torch.load(os.path.join(model_dir, "mae.pt"))
 
-    train_loader_pretrain, val_loader_pretrain = get_finetune_dataloaders(DATA_DIR, opt.batch_size, args_pre["img_dim"], opt, use_cuda=True)
+    train_loader_finetune, val_loader_finetune = get_finetune_dataloaders(DATA_DIR, opt.batch_size, args_pre["img_dim"], opt, use_cuda=True)
     
     model_translation = {
     "input_layer": "patch_embed",
@@ -192,11 +221,16 @@ if __name__ == "__main__":
     if mixup is not None:
         criterion = SoftTargetCrossEntropy()
 
+    train_losses = []
+    valid_losses = []
+    valid_accuracies = []
+    best_val_loss = 1000
+
     for epoch in range(opt.epoch_count):
         tloss = finetune_epoch(
             model=model,
             criterion=criterion,
-            data_loader=train_loader_pretrain,
+            data_loader=train_loader_finetune,
             optimizer=optimizer,
             device=device,
             epoch=epoch,
@@ -205,3 +239,40 @@ if __name__ == "__main__":
             print_frequency=100,
             args=opt)
 
+        validation_loss, validation_acc = validate_epoch(
+            model=model,
+            data_loader=val_loader_finetune,
+            device=device,
+            epoch=epoch            
+        )
+
+        # Saving the best model along with its hyperparameters
+        if validation_loss < best_val_loss:
+            best_val_loss = validation_loss
+            model_dir = os.path.join(MODELS_DIR, opt.finetune_exp_name)
+            try:
+                os.mkdir(model_dir)
+            except FileExistsError:
+                pass
+            torch.save(model.state_dict(), os.path.join(model_dir, "mae.pt"))
+            with open(os.path.join(model_dir, 'mae_args.json'), 'w') as f:
+                dictionary_args = opt.__dict__
+                dictionary_args["current_epoch"] = epoch
+                dictionary_args["validation_loss"] = validation_loss
+                dictionary_args["validation_acc"] = validation_acc
+                json.dump(dictionary_args, f, indent=2)
+        train_losses.append(sum(tloss)/len(tloss)) 
+        valid_losses.append(validation_loss)
+        valid_accuracies.append(validation_acc)
+
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(train_losses)), train_losses, label="train loss", alpha=0.5)
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(valid_losses)), valid_losses, label="validation loss", alpha=0.5)
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(valid_accuracies)), valid_accuracies, label="validation accuracy", alpha=0.5)
+    plt.legend()
+    plt.grid()
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss)")
+    plt.title("Supervised finetunning for classification on TinyImageNet")
+    plt.tight_layout()
+    plt.savefig(os.path.join(model_dir, "ft_loss.png"))
+    plt.close()
