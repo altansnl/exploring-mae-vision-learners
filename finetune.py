@@ -12,9 +12,12 @@ import torch.nn as nn
 import os
 import math
 import sys
+from collections import OrderedDict
+import json
+
 
 DATA_DIR = './tiny-imagenet-200'
-MODELS_DIR = "./models/pretrain_test"
+MODELS_DIR = "./models/"
 
 def finetune_epoch(
     model: torch.nn.Module,
@@ -71,13 +74,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # default parameter setting for Vit-B
-    parser.add_argument('--img_dim',  type=int, default=64, help='image dimensionality')
-    parser.add_argument('--num_channels',  type=int, default=3, help='number of channels for the input image')
-    parser.add_argument('--embed_dim',  type=int, default=768, help='encoder embedding dimensionality')
-    parser.add_argument('--hidden_dim_ratio',  type=float, default=4., help='encoder hidden dimension ratio')   
-    parser.add_argument('--num_heads',  type=int, default=12, help='encoder number of heads')
-    parser.add_argument('--num_layers',  type=int, default=12, help='number of transformer layers in the encoder')
-    parser.add_argument('--patch_size',  type=int, default=8, help='patch size')
     parser.add_argument('--epoch_count',  type=int, default=350, help='epoch_count')
     parser.add_argument('--exp_name', type=str, default="pretrain_test", help='Name of the experiment, for tracking purposes')
     parser.add_argument('--nb_classes', default=200, type=int, help='number of the classification types')
@@ -106,13 +102,41 @@ if __name__ == "__main__":
     train_loader_pretrain, val_loader_pretrain = get_pretrain_dataloaders(DATA_DIR, opt.batch_size, imgsz=64, use_cuda=True)
 
     # load pre-trained model
-    mae_pretrained = torch.load(os.path.join(MODELS_DIR, "mae"), map_location='cpu')
-    mae = mae_pretrained.encoder
-
-    # stop masking in the forward pass
-    mae.mask_ratio = 0
-    del mae_pretrained
-    print(f'loaded model of type {type(mae)}')
+    model_dir = os.path.join(MODELS_DIR, opt.exp_name)
+    args_pre = json.load(open(os.path.join(model_dir, "mae_args.json"), "r"))
+    checkpoint_model = torch.load(os.path.join(model_dir, "mae.pt"))
+    
+    model_translation = {
+    "input_layer": "patch_embed",
+    "backbone": "blocks",
+    "pos_embedding": "pos_embed",
+    }
+    
+    all_keys = list(checkpoint_model.keys())
+    new_dict = OrderedDict()
+        
+    for key in all_keys:
+        if key.startswith('encoder.'):
+            key_new = key[8:]
+            
+            if key_new.startswith("norm"):
+                print(f"Removing key {key} from pretrained checkpoint")
+                del checkpoint_model[key]
+                
+            else:
+                for mae_name, vit_name in model_translation.items():
+                    key_new = key_new.replace(mae_name, vit_name)
+                    
+                new_dict[key_new] = checkpoint_model[key]
+            
+        elif key.startswith('decoder.'):
+            print(f"Removing key {key} from pretrained checkpoint")
+            del checkpoint_model[key]
+            
+        else:
+            new_dict[key] = checkpoint_model[key]
+            
+    checkpoint_model = new_dict
 
     device = torch.device('cuda')
 
@@ -126,14 +150,15 @@ if __name__ == "__main__":
             label_smoothing=opt.smoothing, num_classes=opt.nb_classes)
 
     model = VisionTransformer(
-            img_size=opt.img_dim,
-            patch_size=opt.patch_size,
+            img_size=args_pre["img_dim"],
+            patch_size=args_pre["patch_size"],
             in_chans=3,
             num_classes=opt.nb_classes,
-            embed_dim=opt.embed_dim,
-            depth=opt.num_layers,
-            num_heads=opt.num_heads,
-            mlp_ratio=opt.hidden_dim_ratio,
+            embed_dim=args_pre["embed_dim"],
+            depth=args_pre["num_layers"],
+            num_heads=args_pre["num_heads"],
+            mlp_ratio=args_pre["hidden_dim_ratio"],
+            global_pool = 'avg'
         )
     
     model.to(device)
@@ -146,6 +171,9 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(param_groups, lr=opt.learning_rate)
     loss_scaler = torch.cuda.amp.GradScaler(enabled=True)
 
+    msg = model.load_state_dict(checkpoint_model, strict=False)
+    print(msg)
+    
     criterion = torch.nn.CrossEntropyLoss()
     if mixup is not None:
         criterion = SoftTargetCrossEntropy()

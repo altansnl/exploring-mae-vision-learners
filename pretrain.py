@@ -150,7 +150,7 @@ if __name__ == "__main__":
     train_loader_pretrain, val_loader_pretrain = get_pretrain_dataloaders(DATA_DIR, opt.batch_size, imgsz=64, use_cuda=True)
     device = torch.device('cuda')
     mae.to(device)
-    param_groups = optim_factory.add_weight_decay(mae, opt.weight_decay)
+    param_groups = optim_factory.param_groups_weight_decay(mae, opt.weight_decay)
     epoch_count = opt.epoch_count
     lr = opt.learning_rate * opt.batch_size / 256
     opt.learning_rate = lr
@@ -172,8 +172,10 @@ if __name__ == "__main__":
                 os.mkdir(model_dir)
             except FileExistsError:
                 pass
-            torch.save(mae, os.path.join(model_dir, "mae"))
-            with open(os.path.join(model_dir, 'mae_args.txt'), 'w') as f:
+            
+            torch.save(mae.state_dict(), os.path.join(model_dir, "mae.pt"))
+            
+            with open(os.path.join(model_dir, 'mae_args.json'), 'w') as f:
                 dictionary_args = opt.__dict__
                 dictionary_args["current_epoch"] = epoch
                 dictionary_args["validation_loss"] = avg_loss
