@@ -188,8 +188,6 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(param_groups, lr=opt.learning_rate)
     loss_scaler = torch.cuda.amp.GradScaler(enabled=True)
 
-  
-    
     criterion = torch.nn.CrossEntropyLoss()
     if mixup is not None:
         criterion = SoftTargetCrossEntropy()
