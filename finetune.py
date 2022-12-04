@@ -38,14 +38,15 @@ def finetune_epoch(
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
 
-        # mixed precision for forward & loss
-        # not recommended for backwards pass
-        with torch.cuda.amp.autocast():
-            outputs = model(samples)
-            loss = criterion(outputs, targets)
-        
         if mixup is not None:
             samples, targets = mixup(samples, targets)
+
+        # mixed precision for forward & loss
+        # not recommended for backwards pass
+        # with torch.cuda.amp.autocast():
+        outputs = model(samples)
+        loss = criterion(outputs, targets)
+    
 
         scaler.scale(loss).backward()
         scaler.step(optimizer)
@@ -92,10 +93,9 @@ if __name__ == "__main__":
 
     # Optimizer parameters
     parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
-    parser.add_argument('--lr', type=float, default=None, metavar='LR', help='learning rate (absolute lr)')
-    parser.add_argument('--blr', type=float, default=1e-3, metavar='LR', help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
+    parser.add_argument('--learning_rate', type=float, default=1e-3, metavar='LR', help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
     parser.add_argument('--layer_decay', type=float, default=0.75, help='layer-wise lr decay from ELECTRA/BEiT')
-    parser.add_argument('--min_lr', type=float, default=1e-6, metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
+    parser.add_argument('--min_learning_rate', type=float, default=1e-6, metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
     parser.add_argument('--warmup_epochs', type=int, default=5, metavar='N', help='epochs to warmup LR')
 
     # Augmentation
@@ -135,12 +135,15 @@ if __name__ == "__main__":
             num_heads=opt.num_heads,
             mlp_ratio=opt.hidden_dim_ratio,
         )
+    
+    model.to(device)
 
     param_groups = param_groups_lrd(model, opt.weight_decay,
         no_weight_decay_list=model.no_weight_decay(),
         layer_decay=opt.layer_decay
     )
-    optimizer = torch.optim.AdamW(param_groups, lr=opt.lr)
+
+    optimizer = torch.optim.AdamW(param_groups, lr=opt.learning_rate)
     loss_scaler = torch.cuda.amp.GradScaler(enabled=True)
 
     criterion = torch.nn.CrossEntropyLoss()
