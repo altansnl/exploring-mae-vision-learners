@@ -2,6 +2,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from random import randint
+from transform import build_transform
 
 from torch.utils.data import DataLoader, TensorDataset, Dataset
 from torchvision import transforms as T
@@ -67,15 +68,45 @@ def get_pretrain_transform(imgsz):
                             std=[0.229, 0.224, 0.225])
             ])
 
-def get_finetune_transform(imgsz):
-    return T.Compose([
-                # T.Resize(256), # Resize images to 256 x 256
-                T.RandomResizedCrop(size=(imgsz, imgsz)),
-                T.RandomHorizontalFlip(),
-                T.ToTensor(),  # Converting cropped images to tensors
-                T.Normalize(mean=[0.485, 0.456, 0.406], 
-                            std=[0.229, 0.224, 0.225])
-            ])
+def get_finetune_transform(is_train, imgsz, args):
+    return build_transform(is_train, imgsz, args)
+
+def get_finetune_dataloaders(datadir, batch_size, imgsz, args, use_cuda=True):
+    # Define training and validation data paths
+    train_dir = os.path.join(datadir, 'train') 
+    valid_dir = os.path.join(datadir, 'val')
+
+    train_transform = get_finetune_transform(is_train=True, imgsz=imgsz, args=args)
+    valid_transfrom = get_finetune_transform(is_train=False, imgsz=imgsz, args=args)
+
+    fp = open(os.path.join(valid_dir, 'val_annotations.txt'), 'r')
+    data = fp.readlines()
+
+    # Create dictionary to store img filename (word 0) and corresponding
+    # label (word 1) for every line in the txt file (as key value pair)
+    val_img_dict = {}
+    for line in data:
+        words = line.split('\t')
+        val_img_dict[words[0]] = words[1]
+
+    fp.close()
+    val_img_dir = os.path.join(valid_dir, 'images')
+
+    for img, folder in val_img_dict.items():
+        newpath = (os.path.join(val_img_dir, folder))
+        if not os.path.exists(newpath):
+            os.makedirs(newpath)
+        if os.path.exists(os.path.join(val_img_dir, img)):
+            os.rename(os.path.join(val_img_dir, img), os.path.join(newpath, img))
+
+    # Create DataLoaders for pre-trained models (normalized based on specific requirements)
+    train_loader_finetune = generate_dataloader(train_dir, "train", batch_size=batch_size,
+                                    transform=train_transform, use_cuda=use_cuda)
+
+    val_loader_finetune = generate_dataloader(val_img_dir, "val", batch_size=batch_size,
+                                    transform=valid_transfrom, use_cuda=use_cuda)
+    
+    return train_loader_finetune, val_loader_finetune
 
 
 def get_pretrain_dataloaders(datadir, batch_size, imgsz=64, use_cuda=True):

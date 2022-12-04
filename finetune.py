@@ -1,5 +1,5 @@
 import argparse
-from dataloader import get_pretrain_dataloaders
+from dataloader import get_finetune_dataloaders
 from timm.models.vision_transformer import VisionTransformer
 from timm.data import Mixup
 from timm.loss import SoftTargetCrossEntropy
@@ -101,15 +101,21 @@ if __name__ == "__main__":
 
     # Augmentation
     parser.add_argument('--smoothing', type=float, default=0.1, help='Label smoothing (default: 0.1)')
-
+    parser.add_argument('--color_jitter', type=float, default=None, metavar='PCT', help='Color jitter factor (enabled only when not using Auto/RandAug)')
+    parser.add_argument('--aa', type=str, default='rand-m9-mstd0.5-inc1', metavar='NAME', help='Use AutoAugment policy. "v0" or "original". " + "(default: rand-m9-mstd0.5-inc1)'),
+    
+    # Random Erase params
+    parser.add_argument('--reprob', type=float, default=0.25, metavar='PCT', help='Random erase prob (default: 0.25)')
+    parser.add_argument('--remode', type=str, default='pixel', help='Random erase mode (default: "pixel")')
+    parser.add_argument('--recount', type=int, default=1, help='Random erase count (default: 1)')
     opt = parser.parse_args()
-
-    train_loader_pretrain, val_loader_pretrain = get_pretrain_dataloaders(DATA_DIR, opt.batch_size, imgsz=64, use_cuda=True)
 
     # load pre-trained model
     model_dir = os.path.join(MODELS_DIR, opt.exp_name)
     args_pre = json.load(open(os.path.join(model_dir, "mae_args.json"), "r"))
     checkpoint_model = torch.load(os.path.join(model_dir, "mae.pt"))
+
+    train_loader_pretrain, val_loader_pretrain = get_finetune_dataloaders(DATA_DIR, opt.batch_size, args_pre["img_dim"], opt, use_cuda=True)
     
     model_translation = {
     "input_layer": "patch_embed",
