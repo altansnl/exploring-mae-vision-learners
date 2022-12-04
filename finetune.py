@@ -1,6 +1,8 @@
 import argparse
 from dataloader import get_pretrain_dataloaders
-from maemodel import MAEBackboneViT, MAEPretainViT
+
+from timm.models.vision_transformer import VisionTransformer
+from functools import partial
 
 import torch
 import torch.nn as nn
@@ -30,18 +32,6 @@ if __name__ == "__main__":
 
     train_loader_pretrain, val_loader_pretrain = get_pretrain_dataloaders(DATA_DIR, opt.batch_size, imgsz=64, use_cuda=True)
 
-    mae = MAEBackboneViT(
-        embed_dim=opt.embed_dim,
-        img_dim=opt.img_dim,
-        hidden_dim_ratio=opt.hidden_dim_ratio,
-        num_channels=opt.num_channels,
-        num_heads=opt.num_heads,
-        num_layers=opt.num_layers,
-        patch_size=opt.patch_size,
-        mask_ratio=0.0,
-        layer_norm=nn.LayerNorm
-    )
-
     # load pre-trained model
     mae_pretrained = torch.load(os.path.join(MODELS_DIR, "mae"), map_location='cpu')
     mae = mae_pretrained.encoder
@@ -55,10 +45,16 @@ if __name__ == "__main__":
 
     # CHECK: do we need to interpolate position embeddings for higher resolution?
 
-    n_parameters = sum(p.numel() for p in mae.parameters() if p.requires_grad)
+    model = VisionTransformer(
+            img_size=opt.img_dim,
+            patch_size=opt.patch_size,
+            in_chans=3,
+            num_classes=opt.nb_classes,
+            embed_dim=opt.embed_dim,
+            depth=opt.num_layers,
+            num_heads=opt.num_heads,
+            mlp_ratio=opt.hidden_dim_ratio,
+        )
 
-    print("Model = %s" % str(mae))
-    print('number of params (M): %.2f' % (n_parameters / 1.e6))
     criterion = torch.nn.CrossEntropyLoss()
 
-    
