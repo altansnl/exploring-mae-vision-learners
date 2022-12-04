@@ -172,8 +172,10 @@ if __name__ == "__main__":
                 os.mkdir(model_dir)
             except FileExistsError:
                 pass
-            torch.save(mae, os.path.join(model_dir, "mae"))
-            with open(os.path.join(model_dir, 'mae_args.txt'), 'w') as f:
+            
+            torch.save(mae.state_dict(), os.path.join(model_dir, "mae.pt"))
+            
+            with open(os.path.join(model_dir, 'mae_args.json'), 'w') as f:
                 dictionary_args = opt.__dict__
                 dictionary_args["current_epoch"] = epoch
                 dictionary_args["validation_loss"] = avg_loss

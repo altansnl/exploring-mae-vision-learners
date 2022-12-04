@@ -59,14 +59,21 @@ new_dict = OrderedDict()
 for key in all_keys:
     if key.startswith('encoder.'):
         key_new = key[8:]
-        for mae_name, vit_name in model_translation.items():
-            key_new = key_new.replace(mae_name, vit_name)
+        
+        if key_new.startswith("norm"):
+            print(f"Removing key {key} from pretrained checkpoint")
+            del checkpoint_model[key]
             
-        new_dict[key_new] = checkpoint_model[key]
+        else:
+            for mae_name, vit_name in model_translation.items():
+                key_new = key_new.replace(mae_name, vit_name)
+                
+            new_dict[key_new] = checkpoint_model[key]
         
     elif key.startswith('decoder.'):
         print(f"Removing key {key} from pretrained checkpoint")
         del checkpoint_model[key]
+        
     else:
         new_dict[key] = checkpoint_model[key]
         
