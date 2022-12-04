@@ -1,6 +1,6 @@
 from maemodel import MAEPretainViT
 from dataloader import get_pretrain_dataloaders
-from utils import adjust_learning_rate, patch_to_img, save_images_tensors
+from utils import adjust_learning_rate, save_images_tensors
 from functools import partial
 import torch.nn as nn
 import argparse
