@@ -1,15 +1,65 @@
 import argparse
 from dataloader import get_pretrain_dataloaders
-
 from timm.models.vision_transformer import VisionTransformer
+from timm.data import Mixup
 from functools import partial
-
+from typing import Iterable, Optional
+from utils import adjust_learning_rate
+import time
 import torch
 import torch.nn as nn
 import os
+import math
+import sys
 
 DATA_DIR = './tiny-imagenet-200'
 MODELS_DIR = "./models/pretrain_test"
+
+def finetune_epoch(
+    model: torch.nn.Module,
+    criterion: torch.nn.Module,
+    data_loader: Iterable,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    epoch: int,
+    scaler,
+    max_norm: float,
+    mixup: Optional[Mixup],
+    print_frequency: int,
+    args
+):
+    model.train(True)
+    optimizer.zero_grad() # Sets the gradients of all optimized :class:`torch.Tensor` s to zero
+    losses = []
+    t0 = time.time()
+    for iter, (samples, targets) in enumerate(data_loader):
+        
+        lr = adjust_learning_rate(optimizer, iter / len(data_loader) + epoch, args)
+        samples = samples.to(device, non_blocking=True)
+        targets = targets.to(device, non_blocking=True)
+
+        # mixed precision for forward & loss
+        # not recommended for backwards pass
+        with torch.cuda.amp.autocast():
+            outputs = model(samples)
+            loss = criterion(outputs, targets)
+
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
+
+        loss_value = loss.item()
+        losses.append(loss_value)
+
+        if not math.isfinite(loss_value):
+            print("Loss is {}, exiting".format(loss_value))
+            sys.exit(1)
+        if iter % print_frequency == 0:
+            print(f'loss value in epoch {epoch}, step {iter}: {round(loss_value, 5)} with learning rate {round(lr, 7)}')   
+
+    t1 = time.time()
+    print(f"Epoch {epoch} took {round(t1-t0, 2)} seconds.")
+    return losses
 
 if __name__ == "__main__":    
     
