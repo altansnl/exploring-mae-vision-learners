@@ -304,7 +304,6 @@ class MAEPretainViT(nn.Module):
         mask [B, T], 0 is keep, 1 is remove, 
         """
         patch_size = int(np.sqrt(pred.shape[-1]/3))
-        print(patch_size)
         targets = img_to_patch(targets, patch_size)
         
         if norm_tar:
