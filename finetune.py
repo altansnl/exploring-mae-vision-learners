@@ -32,11 +32,11 @@ def finetune_epoch(
     args
 ):
     model.train(True)
-    optimizer.zero_grad() # Sets the gradients of all optimized :class:`torch.Tensor` s to zero
+     # Sets the gradients of all optimized :class:`torch.Tensor` s to zero
     losses = []
     t0 = time.time()
     for iter, (samples, targets) in enumerate(data_loader):
-
+        
         lr = adjust_learning_rate(optimizer, iter / len(data_loader) + epoch, args)
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
@@ -44,11 +44,14 @@ def finetune_epoch(
         if mixup is not None:
             samples, targets = mixup(samples, targets)
 
+    
+        optimizer.zero_grad()
+        
         # mixed precision for forward & loss
         # not recommended for backwards pass
-        # with torch.cuda.amp.autocast():
-        outputs = model(samples)
-        loss = criterion(outputs, targets)
+        with torch.cuda.amp.autocast():
+            outputs = model(samples)
+            loss = criterion(outputs, targets)
     
 
         scaler.scale(loss).backward()
