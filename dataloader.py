@@ -67,6 +67,16 @@ def get_pretrain_transform(imgsz):
                             std=[0.229, 0.224, 0.225])
             ])
 
+def get_finetune_transform(imgsz):
+    return T.Compose([
+                # T.Resize(256), # Resize images to 256 x 256
+                T.RandomResizedCrop(size=(imgsz, imgsz)),
+                T.RandomHorizontalFlip(),
+                T.ToTensor(),  # Converting cropped images to tensors
+                T.Normalize(mean=[0.485, 0.456, 0.406], 
+                            std=[0.229, 0.224, 0.225])
+            ])
+
 
 def get_pretrain_dataloaders(datadir, batch_size, imgsz=64, use_cuda=True):
     # Define training and validation data paths
