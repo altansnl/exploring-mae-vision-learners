@@ -128,7 +128,7 @@ class MAEBackboneViT(nn.Module):
         
         # Add cls token + positional
         cls_token = self.cls_token + self.pos_embedding[:, 0]
-        cls_token = cls_token.repeat(x.shape[0], 1, 1)
+        cls_token = cls_token.expand(x.shape[0], -1, -1)
       
         x = torch.cat([cls_token, x], dim=1)
         
@@ -304,6 +304,7 @@ class MAEPretainViT(nn.Module):
         mask [B, T], 0 is keep, 1 is remove, 
         """
         patch_size = int(np.sqrt(pred.shape[-1]/3))
+        print(patch_size)
         targets = img_to_patch(targets, patch_size)
         
         if norm_tar:
@@ -318,3 +319,6 @@ class MAEPretainViT(nn.Module):
         return loss
         
         
+
+
+
