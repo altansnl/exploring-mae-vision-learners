@@ -87,8 +87,9 @@ def validate_epoch(
     for _, (samples, targets) in enumerate(data_loader):
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
-        outputs = model(samples)
-        loss = criterion(outputs, targets)
+        with torch.cuda.amp.autocast():
+            outputs = model(samples)
+            loss = criterion(outputs, targets)
         losses.append(loss.item())
         acc1, acc5 = accuracy(outputs, targets, topk=(1, 5))
         accuracies.append(acc1.item())
