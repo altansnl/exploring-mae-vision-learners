@@ -15,6 +15,7 @@ from collections import OrderedDict
 import json
 from timm.utils import accuracy
 import numpy as np
+from timm.models.layers import trunc_normal_
 
 
 DATA_DIR = './tiny-imagenet-200'
@@ -33,11 +34,11 @@ def finetune_epoch(
     args
 ):
     model.train(True)
-    optimizer.zero_grad() # Sets the gradients of all optimized :class:`torch.Tensor` s to zero
+     # Sets the gradients of all optimized :class:`torch.Tensor` s to zero
     losses = []
     t0 = time.time()
     for iter, (samples, targets) in enumerate(data_loader):
-
+        
         lr = adjust_learning_rate(optimizer, iter / len(data_loader) + epoch, args)
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
@@ -45,11 +46,14 @@ def finetune_epoch(
         if mixup is not None:
             samples, targets = mixup(samples, targets)
 
+    
+        optimizer.zero_grad()
+        
         # mixed precision for forward & loss
         # not recommended for backwards pass
-        # with torch.cuda.amp.autocast():
-        outputs = model(samples)
-        loss = criterion(outputs, targets)
+        with torch.cuda.amp.autocast():
+            outputs = model(samples)
+            loss = criterion(outputs, targets)
     
 
         scaler.scale(loss).backward()
@@ -106,6 +110,7 @@ if __name__ == "__main__":
     parser.add_argument('--finetune_exp_name', type=str, default="finetune_test", help='Name of the experiment, for tracking purposes')
     parser.add_argument('--nb_classes', default=200, type=int, help='number of the classification types')
     parser.add_argument('--batch_size',  type=int, default=128, help='batch size')
+    parser.add_argument('--drop_path', type=float, default=0.1, metavar='PCT', help='Drop path rate (default: 0.1)')
 
     # Mixup
     parser.add_argument('--mixup', type=float, default=0, help='mixup alpha, mixup enabled if > 0.')
@@ -193,8 +198,14 @@ if __name__ == "__main__":
             depth=args_pre["num_layers"],
             num_heads=args_pre["num_heads"],
             mlp_ratio=args_pre["hidden_dim_ratio"],
-            global_pool = 'avg'
+            global_pool = 'avg',
+            drop_path_rate=opt.drop_path
         )
+    
+    msg = model.load_state_dict(checkpoint_model, strict=False)
+    print(msg)
+    # manually initialize fc layer [Not said in paper]
+    trunc_normal_(model.head.weight, std=2e-5)
     
     model.to(device)
 
@@ -206,9 +217,6 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(param_groups, lr=opt.learning_rate)
     loss_scaler = torch.cuda.amp.GradScaler(enabled=True)
 
-    msg = model.load_state_dict(checkpoint_model, strict=False)
-    print(msg)
-    
     criterion = torch.nn.CrossEntropyLoss()
     if mixup is not None:
         criterion = SoftTargetCrossEntropy()
