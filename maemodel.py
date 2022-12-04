@@ -120,18 +120,15 @@ class MAEBackboneViT(nn.Module):
 
         # we don not generate pos embedding for cls token in the first place
         x = x + self.pos_embedding[:, 1:]
-      
         
         # random mask
         x, mask, undo_token_perm = self.mask_rand(x)
-       
         
         # Add cls token + positional
         cls_token = self.cls_token + self.pos_embedding[:, 0]
         cls_token = cls_token.expand(x.shape[0], -1, -1)
       
         x = torch.cat([cls_token, x], dim=1)
-        
       
         x = self.backbone(x)
         x = self.norm(x)
@@ -316,8 +313,3 @@ class MAEPretainViT(nn.Module):
 
         loss = torch.sum(loss * mask) / torch.sum(mask)  
         return loss
-        
-        
-
-
-
