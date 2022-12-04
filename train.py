@@ -186,9 +186,9 @@ if __name__ == "__main__":
     kernel = np.ones(kernel_size) / kernel_size
 
     train_losses = np.convolve(np.array(train_losses), kernel, mode='valid')
-    plt.plot(np.linspace(0, opt.epoch_count, num=len(train_losses)), train_losses, label="train loss", alpha=0.5)
     valid_losses = np.convolve(np.array(valid_losses), kernel, mode='valid')
     plt.plot(np.linspace(0, opt.epoch_count, num=len(valid_losses)), valid_losses, label="validation loss", alpha=0.5)
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(train_losses)), train_losses, label="train loss", alpha=0.5)
     plt.legend()
     plt.grid()
     plt.xlabel("Epochs")
