@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+from timm.models.vision_transformer import VisionTransformer
 
 from timm.models.vision_transformer import PatchEmbed, Block
 from utils import *
@@ -120,18 +121,15 @@ class MAEBackboneViT(nn.Module):
 
         # we don not generate pos embedding for cls token in the first place
         x = x + self.pos_embedding[:, 1:]
-      
         
         # random mask
         x, mask, undo_token_perm = self.mask_rand(x)
-       
         
         # Add cls token + positional
         cls_token = self.cls_token + self.pos_embedding[:, 0]
         cls_token = cls_token.expand(x.shape[0], -1, -1)
       
         x = torch.cat([cls_token, x], dim=1)
-        
       
         x = self.backbone(x)
         x = self.norm(x)
@@ -304,7 +302,6 @@ class MAEPretainViT(nn.Module):
         mask [B, T], 0 is keep, 1 is remove, 
         """
         patch_size = int(np.sqrt(pred.shape[-1]/3))
-        print(patch_size)
         targets = img_to_patch(targets, patch_size)
         
         if norm_tar:
@@ -317,8 +314,3 @@ class MAEPretainViT(nn.Module):
 
         loss = torch.sum(loss * mask) / torch.sum(mask)  
         return loss
-        
-        
-
-
-
