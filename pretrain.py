@@ -150,7 +150,7 @@ if __name__ == "__main__":
     train_loader_pretrain, val_loader_pretrain = get_pretrain_dataloaders(DATA_DIR, opt.batch_size, imgsz=64, use_cuda=True)
     device = torch.device('cuda')
     mae.to(device)
-    param_groups = optim_factory.add_weight_decay(mae, opt.weight_decay)
+    param_groups = optim_factory.param_groups_weight_decay(mae, opt.weight_decay)
     epoch_count = opt.epoch_count
     lr = opt.learning_rate * opt.batch_size / 256
     opt.learning_rate = lr

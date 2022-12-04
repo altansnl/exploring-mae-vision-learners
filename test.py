@@ -21,6 +21,7 @@ model = VisionTransformer(
             depth=12,
             num_heads=12,
             mlp_ratio=4.,
+            global_pool = 'avg'
         )
 
 #print(model)
