@@ -81,6 +81,7 @@ if __name__ == "__main__":
     parser.add_argument('--exp_name', type=str, default="pretrain_test", help='Name of the experiment, for tracking purposes')
     parser.add_argument('--nb_classes', default=200, type=int, help='number of the classification types')
     parser.add_argument('--batch_size',  type=int, default=128, help='batch size')
+    parser.add_argument('--drop_path', type=float, default=0.1, metavar='PCT', help='Drop path rate (default: 0.1)')
 
     # Mixup
     parser.add_argument('--mixup', type=float, default=0, help='mixup alpha, mixup enabled if > 0.')
@@ -161,7 +162,8 @@ if __name__ == "__main__":
             depth=args_pre["num_layers"],
             num_heads=args_pre["num_heads"],
             mlp_ratio=args_pre["hidden_dim_ratio"],
-            global_pool = 'avg'
+            global_pool = 'avg',
+            drop_path_rate=opt.drop_path
         )
     
     model.to(device)
