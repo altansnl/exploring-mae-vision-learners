@@ -24,6 +24,7 @@ except FileExistsError:
     pass
 RESULTS_DIR = "./results/pretraining"
 try:
+    os.mkdir("./results")
     os.mkdir(RESULTS_DIR)
 except FileExistsError:
     pass
