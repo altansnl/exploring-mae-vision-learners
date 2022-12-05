@@ -1,4 +1,5 @@
 from maemodel import *
+from dmaemodel import *
 import numpy as np
 from functools import partial
 from collections import OrderedDict
@@ -12,73 +13,42 @@ def set_seed(seed):
         
 set_seed(42)
 
-model = VisionTransformer(
-            img_size=64,
-            patch_size=16,
-            in_chans=3,
-            num_classes=10,
-            embed_dim=768,
-            depth=12,
-            num_heads=12,
-            mlp_ratio=4.,
-            global_pool = 'avg'
-        )
 
 #print(model)
 
-our_model = MAEPretainViT(
+teacher_model = MAEBackboneViT(
+        embed_dim=1024,
         img_dim=64,
+        hidden_dim_ratio=4.,
         num_channels=3,
+        num_heads=16,
+        num_layers=18,
         patch_size=16,
-        enc_embed_dim=768,
-        enc_hidden_dim_ratio=4.,
-        enc_num_heads=12,
-        enc_num_layers=12,
-        dec_embed_dim=512,
-        dec_hidden_dim_ratio=4.,
-        dec_num_heads=16,
-        dec_num_layers=8,
-        mask_ratio=.75,
-        norm1=partial(nn.LayerNorm, eps=1e-6),
-        norm2=partial(nn.LayerNorm, eps=1e-6)
+        mask_ratio=0.75,
+        layer_norm=partial(nn.LayerNorm, eps=1e-6),
+        post_norm=False
     )
 
 
-model_translation = {
-    "input_layer": "patch_embed",
-    "backbone": "blocks",
-    "pos_embedding": "pos_embed",
-    "norm": "norm" # depending on the timm implementation has a different name
-}
+student_model = DMAEPretainViT(
+                 img_dim=64,
+                 num_channels=3,
+                 enc_embed_dim=768,
+                 enc_hidden_dim_ratio=4.,
+                 enc_num_heads=12,
+                 enc_num_layers=12,
+                 extract_lay=9,
+                 teacher_dim=1024,
+                 patch_size=16,
+                 dec_embed_dim=512,
+                 dec_hidden_dim_ratio=4.,
+                 dec_num_heads=16,
+                 dec_num_layers=8,
+                 norm1=partial(nn.LayerNorm, eps=1e-6),
+                 norm2=partial(nn.LayerNorm, eps=1e-6))
 
 
-checkpoint_model = our_model.state_dict()
-all_keys = list(checkpoint_model.keys())
-new_dict = OrderedDict()
+x = torch.rand((4, 3, 64, 64))
 
-for key in all_keys:
-    if key.startswith('encoder.'):
-        key_new = key[8:]
-        
-        if key_new.startswith("norm"):
-            print(f"Removing key {key} from pretrained checkpoint")
-            del checkpoint_model[key]
-            
-        else:
-            for mae_name, vit_name in model_translation.items():
-                key_new = key_new.replace(mae_name, vit_name)
-                
-            new_dict[key_new] = checkpoint_model[key]
-        
-    elif key.startswith('decoder.'):
-        print(f"Removing key {key} from pretrained checkpoint")
-        del checkpoint_model[key]
-        
-    else:
-        new_dict[key] = checkpoint_model[key]
-        
-checkpoint_model = new_dict
-print("="*100)
-
-msg = model.load_state_dict(checkpoint_model, strict=False)
-print(msg)
+x_, mask, student, teacher = student_model.forward(x, teacher_model)
+print(DMAEPretainViT.loss(x, x_, mask, teacher, student))

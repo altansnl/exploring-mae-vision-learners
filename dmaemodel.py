@@ -5,9 +5,9 @@ from timm.models.vision_transformer import VisionTransformer
 
 from timm.models.vision_transformer import PatchEmbed, Block
 from utils import *
+from maemodel import *
 
-
-class MAEBackboneViT(nn.Module):
+class DMAEBackboneViT(nn.Module):
     """
     Simplified version of ViT structure + random patchify
     """
@@ -19,30 +19,34 @@ class MAEBackboneViT(nn.Module):
                  num_heads,
                  num_layers,
                  patch_size,
-                 mask_ratio=0.75,
-                 layer_norm=nn.LayerNorm,
-                 post_norm=True):
+                 teacher_dim,
+                 extract_lay,
+                 layer_norm=nn.LayerNorm):
         
         super().__init__()
         
         self.patch_size = patch_size
-        
+        self.extract_lay = extract_lay
 
         # Layers/Networks
         self.input_layer = PatchEmbed(img_dim, patch_size, num_channels, embed_dim)
-        self.backbone = nn.Sequential(*[Block(embed_dim, num_heads, hidden_dim_ratio,
+        self.backbone = nn.ModuleList([Block(embed_dim, num_heads, hidden_dim_ratio,
                                               qkv_bias=True, norm_layer=layer_norm)
                                         for _ in range(num_layers)])
         
-        self.norm = layer_norm(embed_dim) if post_norm else nn.Identity()
-        self.mask_ratio = mask_ratio
+        self.norm = layer_norm(embed_dim)
         
         # Parameters/Embeddings
         self.cls_token = nn.Parameter(torch.zeros(1, 1 ,embed_dim))
         
         # Facebook does a resize of this encodings
         self.num_patches = self.input_layer.num_patches
-        self.pos_embedding = nn.Parameter(torch.zeros(1, self.num_patches  + 1, embed_dim), requires_grad=False)  
+        self.pos_embedding = nn.Parameter(torch.zeros(1, self.num_patches  + 1, embed_dim), requires_grad=False)
+        
+        self.proj_st_2_teach = nn.Sequential(
+            nn.Linear(embed_dim, teacher_dim),
+            nn.GELU(),
+            nn.Linear(teacher_dim, teacher_dim))
 
         self.initialize_weights()
     
@@ -80,42 +84,12 @@ class MAEBackboneViT(nn.Module):
             nn.init.constant_(m.weight, 1.0)
         
     
-    def mask_rand(self, x):
-        """Random mask patches
-
-        Args:
-            x (torch.Tensor): [Batch, Num Tokens, Embed Dim]
-            ratio (float, optional): _description_. Defaults to 0.75.
-
-        Returns:
-            _type_: _description_
-        """
-        B, T, E = x.shape
-
-        # random_values = torch.rand(B, T, device=x.device)
-        
-        num_keep = int(T * (1 - self.mask_ratio))
-
-        token_perm = torch.rand(x.shape[:2], device=x.device).argsort(1)
-        undo_token_perm = torch.argsort(token_perm, dim=1) # get back indices
-        token_perm = token_perm[:, :num_keep]
-        token_perm.unsqueeze_(-1)
-        token_perm_out = token_perm
-        token_perm = token_perm.repeat(1, 1, E)  # reformat this for the gather operation
-
-        x_masked = x.gather(1, token_perm)
-
-        # generate the binary mask: 0 is keep, 1 is remove
-        mask = torch.ones(x.shape[:2], device=x.device)
-        mask[:, :num_keep] = 0
-        mask = torch.gather(mask, dim=1, index=undo_token_perm)
-        
-        return x_masked, mask, token_perm_out, undo_token_perm
-    
-    def forward(self, x):
+    def forward(self, x:torch.Tensor, teacher_model):
       
         # Patchify and embed
-       
+        x_og = x.detach()
+        teacher, mask, token_perm, undo_token_perm = teacher_model(x_og)
+        
         x = self.input_layer(x)
         
         # add positional emb (skiping cls)
@@ -125,112 +99,32 @@ class MAEBackboneViT(nn.Module):
         x = x + self.pos_embedding[:, 1:]
         
         # random mask
-        x, mask, token_perm, undo_token_perm = self.mask_rand(x)
+        token_perm = token_perm.repeat(1, 1, x.shape[-1])
+        x = x.gather(1, token_perm)
         
         # Add cls token + positional
         cls_token = self.cls_token + self.pos_embedding[:, 0]
         cls_token = cls_token.expand(x.shape[0], -1, -1)
       
         x = torch.cat([cls_token, x], dim=1)
-      
-        x = self.backbone(x)
+        
+        student = None
+        for idx, blk in enumerate(self.backbone):
+            x = blk(x)
+            
+            if idx == self.extract_lay-1:
+                student = self.proj_st_2_teach(x)
+            
         x = self.norm(x)
         
-        return x, mask, token_perm, undo_token_perm
+        print(student.shape)
+        print(teacher.shape)
+        
+        
+        return x, mask, undo_token_perm, student, teacher
         
 
-class MAEDecoderViT(nn.Module):
-    def __init__(self,
-                 embed_dim,
-                 hidden_dim_ratio,
-                 num_channels,
-                 num_heads,
-                 num_layers,
-                 patch_size,
-                 enc_embed_dim,
-                 num_patches,
-                 layer_norm=nn.LayerNorm
-                 ):
-        super().__init__()
-
-        # Layers/Networks
-        self.input_layer = nn.Linear(enc_embed_dim, embed_dim)
-        self.neck = nn.Sequential(*[Block(embed_dim, num_heads, hidden_dim_ratio,
-                                            qkv_bias=True, norm_layer=layer_norm)
-                                    for _ in range(num_layers)])
-        
-        self.norm = layer_norm(embed_dim)
-        self.num_patches = num_patches
-        # Parameters/Embeddings
-        self.mask_token = nn.Parameter(torch.zeros(1, 1 ,embed_dim))
-        
-        self.pos_embedding = nn.Parameter(torch.zeros(1, self.num_patches  + 1, embed_dim), requires_grad=False)  
-        
-        
-        # Since we have lower dimentional token we need to recover original dimensionality
-        self.pred_proj = nn.Linear(embed_dim, patch_size**2 * num_channels)
-        
-        self.initialize_weights()
-        
-    def initialize_weights(self):
-        pos_embedding = get_2d_sincos_pos_embed(self.pos_embedding.shape[-1], int(self.num_patches**.5), cls_token=True)
-        self.pos_embedding.data.copy_(torch.from_numpy(pos_embedding).float().unsqueeze(0))
-        
-        # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
-        # The use of truncated come from DEiT saying that it is hard to train (maybe too much exploding grads)
-        # The sdt seems to come from BEiT but not sure (possible to track)
-        # torch.nn.init.normal_(self.cls_token, std=.02)
-        torch.nn.init.normal_(self.mask_token, std=.02)
-
-        # initialize nn.Linear and nn.LayerNorm
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            # we use xavier_uniform following official JAX ViT:
-            # guess: we use GELU so maybe it is better to use xavier
-            # Not able to track!!!
-            torch.nn.init.xavier_uniform_(m.weight)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-    
-    def forward(self, x, undo_token_perm):
-        # Patchify and embed
-        x = self.input_layer(x)
-        
-        # Add mask token + positional
-        mask_token = self.mask_token.repeat(x.shape[0],
-                                           self.num_patches-(x.shape[1]-1),
-                                           1)
-        
-   
-        x_mask = torch.cat([x[:, 1:], mask_token], dim=1)
-     
-        # recover order
-        # apply same permutation to all elements in the same token
-        undo_token_perm = undo_token_perm.unsqueeze(-1).repeat(1, 1, x.shape[2])
-        x_mask = x_mask.gather(1, undo_token_perm)
-       
-        # need to put back cls in order to use Block
-        x = torch.cat([x[:, :1], x_mask], dim=1)
-        
-        # add positional emb 
-        x = x + self.pos_embedding
-        
-        x = self.neck(x)
-        x = self.norm(x)
-        
-        # Recover dimensionality
-        x = self.pred_proj(x)
-        # To test recovery we dont need cls token
-        x = x[:, 1:]
-        
-        return x
-
-class MAEPretainViT(nn.Module):
+class DMAEPretainViT(nn.Module):
     def __init__(self,
                  img_dim,
                  num_channels,
@@ -238,12 +132,13 @@ class MAEPretainViT(nn.Module):
                  enc_hidden_dim_ratio,
                  enc_num_heads,
                  enc_num_layers,
+                 extract_lay,
+                 teacher_dim,
                  patch_size,
                  dec_embed_dim,
                  dec_hidden_dim_ratio,
                  dec_num_heads,
                  dec_num_layers,
-                 mask_ratio=0.75,
                  norm1=nn.LayerNorm,
                  norm2=nn.LayerNorm):
         """
@@ -265,14 +160,15 @@ class MAEPretainViT(nn.Module):
         
         self.patch_size = patch_size
         
-        self.encoder = MAEBackboneViT(embed_dim=enc_embed_dim,
+        self.encoder = DMAEBackboneViT(embed_dim=enc_embed_dim,
                                     img_dim=img_dim,
                                     hidden_dim_ratio=enc_hidden_dim_ratio,
                                     num_channels=num_channels,
                                     num_heads=enc_num_heads,
                                     num_layers=enc_num_layers,
+                                    extract_lay=extract_lay,
+                                    teacher_dim=teacher_dim,
                                     patch_size=patch_size,
-                                    mask_ratio=mask_ratio,
                                     layer_norm=norm1)
         
         self.decoder = MAEDecoderViT(embed_dim=dec_embed_dim,
@@ -285,34 +181,26 @@ class MAEPretainViT(nn.Module):
                                     num_patches=self.encoder.num_patches,
                                     layer_norm=norm2
                                     )
+        
     
     
-    def forward(self, x):
-        x, mask, _, undo_token_perm = self.encoder(x)
+    def forward(self, x, teacher_model):
+        x, mask, undo_token_perm, student, teacher = self.encoder(x, teacher_model)
         x = self.decoder(x, undo_token_perm)
                 
-        return x, mask
+        return x, mask, student, teacher
 
 
     # mean squared error in the pixel space
     # calculated only on masked patches
     @staticmethod
-    def loss(targets, pred, mask, norm_tar=True):
+    def loss(targets, pred, mask, teach, stud, alpha=1., norm_tar=True):
         """
         targets [B, 3, H, W]
         pred [B, T, E]
         mask [B, T], 0 is keep, 1 is remove, 
         """
-        patch_size = int(np.sqrt(pred.shape[-1]/3))
-        targets = img_to_patch(targets, patch_size)
+        loss_mae = MAEPretainViT.loss(targets, pred, mask, norm_tar)
+        loss_dist = nn.L1Loss()(stud, teach)
         
-        if norm_tar:
-            mean = torch.mean(targets, dim=-1, keepdim=True)
-            var = torch.var(targets, dim=-1, keepdim=True)
-            targets = (targets - mean) / (var + 1.e-5)**.5
-        
-        loss = (pred - targets) ** 2
-        loss = torch.mean(loss, dim=-1)  
-
-        loss = torch.sum(loss * mask) / torch.sum(mask)  
-        return loss
+        return loss_mae + alpha*loss_dist
