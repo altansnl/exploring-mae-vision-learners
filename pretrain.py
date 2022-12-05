@@ -18,8 +18,20 @@ import json
 import random
 
 DATA_DIR = './tiny-imagenet-200'
+try:
+    os.mkdir(DATA_DIR)
+except FileExistsError:
+    pass
 RESULTS_DIR = "./results/pretraining"
+try:
+    os.mkdir(RESULTS_DIR)
+except FileExistsError:
+    pass
 MODELS_DIR = "./models"
+try:
+    os.mkdir(MODELS_DIR)
+except FileExistsError:
+    pass
 
 
 def pretrain_epoch(
