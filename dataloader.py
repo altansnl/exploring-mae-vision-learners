@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset, Dataset
 from torchvision import transforms as T
 from torchvision.utils import make_grid
 from torchvision import datasets
+import torch
 
 DATA_DIR = './tiny-imagenet-200' # Original images come in shapes of [3,64,64]
 
@@ -49,10 +50,13 @@ def generate_dataloader(data, name, batch_size, transform=None, use_cuda=True):
         kwargs = {"pin_memory": True, "num_workers": 1}
     else:
         kwargs = {}
+
+    g = torch.Generator()
+    g.manual_seed(42)
     
     # Wrap image dataset (defined above) in dataloader 
     dataloader = DataLoader(dataset, batch_size=batch_size, 
-                        shuffle=(name=="train"), 
+                        shuffle=(name=="train"), generator=g,
                         **kwargs)
     
     return dataloader
@@ -61,7 +65,7 @@ def generate_dataloader(data, name, batch_size, transform=None, use_cuda=True):
 def get_pretrain_transform(imgsz):
     return T.Compose([
                 # T.Resize(256), # Resize images to 256 x 256
-                T.RandomResizedCrop(size=(imgsz, imgsz)),
+                T.RandomResizedCrop(size=(imgsz, imgsz), scale=(0.2, 1.0), interpolation=3),
                 T.RandomHorizontalFlip(),
                 T.ToTensor(),  # Converting cropped images to tensors
                 T.Normalize(mean=[0.485, 0.456, 0.406], 

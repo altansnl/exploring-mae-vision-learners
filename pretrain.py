@@ -7,6 +7,7 @@ import argparse
 import torch
 from typing import Iterable
 import timm.optim.optim_factory as optim_factory
+from timm import utils as timmutils
 import matplotlib.pyplot as plt
 import numpy as np
 import math
@@ -14,6 +15,7 @@ import sys
 import os
 import time
 import json
+import random
 
 DATA_DIR = './tiny-imagenet-200'
 RESULTS_DIR = "./results/pretraining"
@@ -120,14 +122,20 @@ if __name__ == "__main__":
     parser.add_argument('--decoder_num_layers',  type=int, default=8, help='number of layers in the decoder')
     parser.add_argument('--mask_ratio',  type=float, default=.75, help='mask ratio')
     parser.add_argument('--batch_size',  type=int, default=128, help='batch size')
-    parser.add_argument('--epoch_count',  type=int, default=350, help='epoch_count')
-    parser.add_argument('--warmup_epochs',  type=int, default=35, help='warmup epochs')
+    parser.add_argument('--epoch_count',  type=int, default=500, help='epoch_count')
+    parser.add_argument('--warmup_epochs',  type=int, default=50, help='warmup epochs')
     parser.add_argument('--learning_rate', type=float, default=1.5e-4, help='learning rate')
     parser.add_argument('--min_learning_rate', type=float, default=0., help='lower lr bound for cyclic schedulers that hit 0')
     parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
     parser.add_argument('--exp_name', type=str, default="pretrain_test", help='Name of the experiment, for tracking purposes')
 
     opt = parser.parse_args()
+
+    # Seeding
+    np.random.seed(42)
+    torch.manual_seed(42) # torch
+    random.seed(42) # random
+    timmutils.random_seed(seed=42) # timm
 
     # initialize the MAE model
     mae = MAEPretainViT(
@@ -180,11 +188,26 @@ if __name__ == "__main__":
                 dictionary_args["current_epoch"] = epoch
                 dictionary_args["validation_loss"] = avg_loss
                 json.dump(dictionary_args, f, indent=2)
+        # Saving check point models
+        if epoch % 99 == 0:
+            model_dir = os.path.join(MODELS_DIR, opt.exp_name)
+            try:
+                os.mkdir(model_dir)
+            except FileExistsError:
+                pass
+            
+            torch.save(mae.state_dict(), os.path.join(model_dir, f"mae_{epoch}_epochs.pt"))
+            
+            with open(os.path.join(model_dir, f'mae_args_{epoch}_epochs.json'), 'w') as f:
+                dictionary_args = opt.__dict__
+                dictionary_args["current_epoch"] = epoch
+                dictionary_args["validation_loss"] = avg_loss
+                json.dump(dictionary_args, f, indent=2)
         train_losses += tloss
         valid_losses += vloss
         print()
     
-    kernel_size = 10
+    kernel_size = 5
     kernel = np.ones(kernel_size) / kernel_size
 
     train_losses = np.convolve(np.array(train_losses), kernel, mode='valid')
