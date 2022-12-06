@@ -129,6 +129,7 @@ if __name__ == "__main__":
     parser.add_argument('--decoder_hidden_dim_ratio',  type=float, default=4., help='decoder hidden dimension ratio') 
     parser.add_argument('--decoder_num_heads',  type=int, default=16, help='decoder number of heads')
     parser.add_argument('--decoder_num_layers',  type=int, default=8, help='number of layers in the decoder')
+    parser.add_argument('--patch_size',  type=int, default=8, help='patch size')
     parser.add_argument('--mask_ratio',  type=float, default=.75, help='mask ratio')
     parser.add_argument('--batch_size',  type=int, default=128, help='batch size')
     parser.add_argument('--epoch_count',  type=int, default=500, help='epoch_count')
@@ -213,13 +214,15 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(param_groups, lr=opt.learning_rate, betas=(0.9, 0.95))
     scaler = torch.cuda.amp.GradScaler(enabled=True)
 
-    train_losses = []
-    valid_losses = []
+    train_losses_mae = []
+    valid_losses_mae = []
+    train_losses_dist = []
+    valid_losses_dist = []
     best_val_loss = 1000
     
     for epoch in range(epoch_count):
-        tloss = pretrain_epoch(student_model, teacher_model, train_loader_pretrain, optimizer, scaler, device, epoch, 100, opt)
-        vloss, avg_loss = validate_epoch(student_model, teacher_model, val_loader_pretrain, device, epoch, opt)  # remove
+        tloss, tmae_lost, tdist_lost = pretrain_epoch(student_model, teacher_model, train_loader_pretrain, optimizer, scaler, device, epoch, 100, opt)
+        vloss, avg_loss, vmae_lost, vdist_lost = validate_epoch(student_model, teacher_model, val_loader_pretrain, device, epoch, opt)  # remove
         # Saving the best model along with its hyperparameters
         if avg_loss < best_val_loss:
             best_val_loss = avg_loss
@@ -252,17 +255,28 @@ if __name__ == "__main__":
                 dictionary_args["current_epoch"] = epoch
                 dictionary_args["validation_loss"] = avg_loss
                 json.dump(dictionary_args, f, indent=2)
-        train_losses += tloss
-        valid_losses += vloss
+                
+        train_losses_mae += tmae_lost
+        valid_losses_mae += vmae_lost
+        train_losses_dist += tdist_lost
+        valid_losses_dist += vdist_lost
         print()
     
     kernel_size = 5
     kernel = np.ones(kernel_size) / kernel_size
 
-    train_losses = np.convolve(np.array(train_losses), kernel, mode='valid')
-    valid_losses = np.convolve(np.array(valid_losses), kernel, mode='valid')
-    plt.plot(np.linspace(0, opt.epoch_count, num=len(valid_losses)), valid_losses, label="validation loss", alpha=0.5)
-    plt.plot(np.linspace(0, opt.epoch_count, num=len(train_losses)), train_losses, label="train loss", alpha=0.5)
+    train_losses_mae = np.convolve(np.array(train_losses_mae), kernel, mode='valid')
+    valid_losses_mae = np.convolve(np.array(valid_losses_mae), kernel, mode='valid')
+    train_losses_dist = np.convolve(np.array(train_losses_dist), kernel, mode='valid')
+    valid_losses_dist = np.convolve(np.array(valid_losses_dist), kernel, mode='valid')
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(valid_losses_mae)), valid_losses_mae,
+             label="validation MAE loss", alpha=0.5, c="tab:red")
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(train_losses_mae)), train_losses_mae,
+             label="train MAE loss", alpha=0.5, c="tab:blue")
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(valid_losses_dist)), valid_losses_dist,
+             label="validation Dist loss", alpha=0.5, c="tab:green")
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(train_losses_dist)), train_losses_dist,
+             label="train Dist loss", alpha=0.5, c="tab:orange")
     plt.legend()
     plt.grid()
     plt.xlabel("Epochs")
