@@ -13,10 +13,10 @@ import math
 import sys
 from collections import OrderedDict
 import json
-from timm.utils import accuracy
+from timm.utils import accuracy, random_seed
 import numpy as np
 from timm.models.layers import trunc_normal_
-
+import random
 
 DATA_DIR = './tiny-imagenet-200'
 try:
@@ -153,6 +153,12 @@ if __name__ == "__main__":
     parser.add_argument('--remode', type=str, default='pixel', help='Random erase mode (default: "pixel")')
     parser.add_argument('--recount', type=int, default=1, help='Random erase count (default: 1)')
     opt = parser.parse_args()
+
+    # Seeding
+    np.random.seed(42)
+    torch.manual_seed(42) # torch
+    random.seed(42) # random
+    random_seed(seed=42) # timm
 
     # load pre-trained model
     model_dir = os.path.join(MODELS_DIR, opt.pretrain_exp_name)
