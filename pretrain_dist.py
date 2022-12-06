@@ -133,7 +133,7 @@ if __name__ == "__main__":
     parser.add_argument('--decoder_num_heads',  type=int, default=16, help='decoder number of heads')
     parser.add_argument('--decoder_num_layers',  type=int, default=8, help='number of layers in the decoder')
     parser.add_argument('--mask_ratio',  type=float, default=.75, help='mask ratio')
-    parser.add_argument('--batch_size',  type=int, default=128, help='batch size')
+    parser.add_argument('--batch_size',  type=int, default=2, help='batch size')
     parser.add_argument('--epoch_count',  type=int, default=500, help='epoch_count')
     parser.add_argument('--warmup_epochs',  type=int, default=50, help='warmup epochs')
     parser.add_argument('--learning_rate', type=float, default=1.5e-4, help='learning rate')
@@ -208,6 +208,10 @@ if __name__ == "__main__":
     device = torch.device('cuda')
     student_model.to(device)
     teacher_model.to(device)
+    
+    for param in teacher_model.parameters():
+        param.requires_grad = False
+        
     teacher_model.eval()
     param_groups = optim_factory.param_groups_weight_decay(student_model, opt.weight_decay)
     epoch_count = opt.epoch_count
