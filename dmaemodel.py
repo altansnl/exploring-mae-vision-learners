@@ -337,4 +337,4 @@ class DMAEPretainViT(nn.Module):
         loss_mae = MAEPretainViT.loss(targets, pred, mask, norm_tar)
         loss_dist = nn.L1Loss()(stud, teach)
         
-        return loss_mae + alpha*loss_dist
+        return loss_mae + alpha*loss_dist, loss_mae, loss_dist

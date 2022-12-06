@@ -47,6 +47,8 @@ def pretrain_epoch(
 ):
     student_model.train(True)
     losses = []
+    losses_mae = []
+    losses_dist = []
     t0 = time.time()
     for iter, (samples, _) in enumerate(data_loader):
         lr = adjust_learning_rate(optimizer, iter / len(data_loader) + current_epoch, args)
@@ -60,7 +62,7 @@ def pretrain_epoch(
         # not recommended for backwards pass
         with torch.cuda.amp.autocast():
             x, mask, student, teacher = student_model.forward(samples, teacher_model)
-            loss = student_model.loss(samples, x, mask, teacher, student, alpha=args.alpha)
+            loss, loss_mae, loss_dist = student_model.loss(samples, x, mask, teacher, student, alpha=args.alpha)
 
 
         scaler.scale(loss).backward()
@@ -69,6 +71,10 @@ def pretrain_epoch(
 
         loss_value = loss.item()
         losses.append(loss_value)
+        loss_value_mae = loss_mae.item()
+        losses_mae.append(loss_value_mae)
+        loss_value_dist = loss_dist.item()
+        losses_dist.append(loss_value_dist)
 
         if not math.isfinite(loss_value):
             print("Loss is {}, stopping training".format(loss_value))
@@ -82,7 +88,7 @@ def pretrain_epoch(
 
     t1 = time.time()
     print(f"Epoch {current_epoch} took {round(t1-t0, 2)} seconds.")
-    return losses
+    return losses, losses_mae, losses_dist
 
 
 def validate_epoch(
