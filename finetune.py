@@ -19,7 +19,22 @@ from timm.models.layers import trunc_normal_
 
 
 DATA_DIR = './tiny-imagenet-200'
-MODELS_DIR = "./models/"
+try:
+    os.mkdir(DATA_DIR)
+except FileExistsError:
+    pass
+RESULTS_DIR = "./results/finetuning"
+try:
+    os.mkdir("./results")
+    os.mkdir(RESULTS_DIR)
+except FileExistsError:
+    pass
+MODELS_DIR = "./models"
+try:
+    os.mkdir(MODELS_DIR)
+except FileExistsError:
+    pass
+
 
 def finetune_epoch(
     model: torch.nn.Module,
@@ -97,7 +112,7 @@ def validate_epoch(
     avg_loss = sum(losses)/len(losses)
     avg_accuracy = sum(accuracies)/len(accuracies)
 
-    print(f"validation: {epoch}, loss:{round(avg_loss, 5)}, acc:{round(avg_accuracy, 5)}")
+    print(f"validation: {epoch}, loss: {round(avg_loss, 5)}, acc: {round(avg_accuracy, 2)}%")
     return avg_loss, avg_accuracy
 
 if __name__ == "__main__":    
@@ -247,32 +262,52 @@ if __name__ == "__main__":
             epoch=epoch            
         )
 
-        # Saving the best model along with its hyperparameters
-        if validation_loss < best_val_loss:
-            best_val_loss = validation_loss
-            model_dir = os.path.join(MODELS_DIR, opt.finetune_exp_name)
-            try:
-                os.mkdir(model_dir)
-            except FileExistsError:
-                pass
-            torch.save(model.state_dict(), os.path.join(model_dir, "mae.pt"))
-            with open(os.path.join(model_dir, 'mae_args.json'), 'w') as f:
-                dictionary_args = opt.__dict__
-                dictionary_args["current_epoch"] = epoch
-                dictionary_args["validation_loss"] = validation_loss
-                dictionary_args["validation_acc"] = validation_acc
-                json.dump(dictionary_args, f, indent=2)
+        # # Saving the best model along with its hyperparameters
+        # if validation_loss < best_val_loss:
+        #     best_val_loss = validation_loss
+        #     model_dir = os.path.join(MODELS_DIR, opt.finetune_exp_name)
+        #     try:
+        #         os.mkdir(model_dir)
+        #     except FileExistsError:
+        #         pass
+        #     torch.save(model.state_dict(), os.path.join(model_dir, "vit_ft.pt"))
+        #     with open(os.path.join(model_dir, 'vit_ft_args.json'), 'w') as f:
+        #         dictionary_args = opt.__dict__
+        #         dictionary_args["current_epoch"] = epoch
+        #         dictionary_args["validation_loss"] = validation_loss
+        #         dictionary_args["validation_acc"] = validation_acc
+        #         json.dump(dictionary_args, f, indent=2)
+
+        # Saving every model, reporting final validation accuracy
+        model_dir = os.path.join(MODELS_DIR, opt.finetune_exp_name)
+        try:
+            os.mkdir(model_dir)
+        except FileExistsError:
+            pass
+        torch.save(model.state_dict(), os.path.join(model_dir, "vit_ft.pt"))
+        with open(os.path.join(model_dir, 'vit_ft_args.json'), 'w') as f:
+            dictionary_args = opt.__dict__
+            dictionary_args["current_epoch"] = epoch
+            dictionary_args["validation_loss"] = validation_loss
+            dictionary_args["validation_acc"] = validation_acc
+            json.dump(dictionary_args, f, indent=2)
         train_losses.append(sum(tloss)/len(tloss)) 
         valid_losses.append(validation_loss)
         valid_accuracies.append(validation_acc)
 
-    plt.plot(np.linspace(0, opt.epoch_count, num=len(train_losses)), train_losses, label="train loss", alpha=0.5)
-    plt.plot(np.linspace(0, opt.epoch_count, num=len(valid_losses)), valid_losses, label="validation loss", alpha=0.5)
+    kernel_size = 5
+    kernel = np.ones(kernel_size) / kernel_size
+    train_losses = np.convolve(np.array(train_losses), kernel, mode='valid')
+    valid_losses = np.convolve(np.array(valid_losses), kernel, mode='valid')
+    valid_accuracies = np.convolve(np.array(valid_accuracies), kernel, mode='valid')
+
     plt.plot(np.linspace(0, opt.epoch_count, num=len(valid_accuracies)), valid_accuracies, label="validation accuracy", alpha=0.5)
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(valid_losses)), valid_losses, label="validation loss", alpha=0.5)
+    plt.plot(np.linspace(0, opt.epoch_count, num=len(train_losses)), train_losses, label="train loss", alpha=0.5)
     plt.legend()
     plt.grid()
     plt.xlabel("Epochs")
-    plt.ylabel("Loss)")
+    plt.ylabel("Metric")
     plt.title("Supervised finetunning for classification on TinyImageNet")
     plt.tight_layout()
     plt.savefig(os.path.join(model_dir, "ft_loss.png"))
