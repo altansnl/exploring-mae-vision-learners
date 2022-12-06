@@ -20,8 +20,7 @@ class MAEBackboneViT(nn.Module):
                  num_layers,
                  patch_size,
                  mask_ratio=0.75,
-                 layer_norm=nn.LayerNorm,
-                 post_norm=True):
+                 layer_norm=nn.LayerNorm):
         
         super().__init__()
         
@@ -34,7 +33,7 @@ class MAEBackboneViT(nn.Module):
                                               qkv_bias=True, norm_layer=layer_norm)
                                         for _ in range(num_layers)])
         
-        self.norm = layer_norm(embed_dim) if post_norm else nn.Identity()
+        self.norm = layer_norm(embed_dim)
         self.mask_ratio = mask_ratio
         
         # Parameters/Embeddings
@@ -100,7 +99,6 @@ class MAEBackboneViT(nn.Module):
         undo_token_perm = torch.argsort(token_perm, dim=1) # get back indices
         token_perm = token_perm[:, :num_keep]
         token_perm.unsqueeze_(-1)
-        token_perm_out = token_perm
         token_perm = token_perm.repeat(1, 1, E)  # reformat this for the gather operation
 
         x_masked = x.gather(1, token_perm)
@@ -110,7 +108,7 @@ class MAEBackboneViT(nn.Module):
         mask[:, :num_keep] = 0
         mask = torch.gather(mask, dim=1, index=undo_token_perm)
         
-        return x_masked, mask, token_perm_out, undo_token_perm
+        return x_masked, mask, undo_token_perm
     
     def forward(self, x):
       
@@ -125,7 +123,7 @@ class MAEBackboneViT(nn.Module):
         x = x + self.pos_embedding[:, 1:]
         
         # random mask
-        x, mask, token_perm, undo_token_perm = self.mask_rand(x)
+        x, mask, undo_token_perm = self.mask_rand(x)
         
         # Add cls token + positional
         cls_token = self.cls_token + self.pos_embedding[:, 0]
@@ -136,7 +134,7 @@ class MAEBackboneViT(nn.Module):
         x = self.backbone(x)
         x = self.norm(x)
         
-        return x, mask, token_perm, undo_token_perm
+        return x, mask, undo_token_perm
         
 
 class MAEDecoderViT(nn.Module):
@@ -288,7 +286,7 @@ class MAEPretainViT(nn.Module):
     
     
     def forward(self, x):
-        x, mask, _, undo_token_perm = self.encoder(x)
+        x, mask, undo_token_perm = self.encoder(x)
         x = self.decoder(x, undo_token_perm)
                 
         return x, mask
