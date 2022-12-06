@@ -1,13 +1,12 @@
 from maemodel import MAEPretainViT
 from dataloader import get_pretrain_dataloaders
-from utils import adjust_learning_rate, save_images_tensors
+from utils import adjust_learning_rate, save_images_tensors, set_seed
 from functools import partial
 import torch.nn as nn
 import argparse
 import torch
 from typing import Iterable
 import timm.optim.optim_factory as optim_factory
-from timm import utils as timmutils
 import matplotlib.pyplot as plt
 import numpy as np
 import math
@@ -15,7 +14,6 @@ import sys
 import os
 import time
 import json
-import random
 
 DATA_DIR = './tiny-imagenet-200'
 try:
@@ -145,10 +143,7 @@ if __name__ == "__main__":
     opt = parser.parse_args()
 
     # Seeding
-    np.random.seed(42)
-    torch.manual_seed(42) # torch
-    random.seed(42) # random
-    timmutils.random_seed(seed=42) # timm
+    set_seed(42)
 
     # initialize the MAE model
     mae = MAEPretainViT(

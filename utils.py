@@ -4,11 +4,16 @@ import math
 from torchvision import transforms
 from torchvision.utils import save_image
 import os
+from timm import utils as timmutils
+import random
 
 
 def set_seed(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
+    random.seed(seed) # random
+    timmutils.random_seed(seed=seed) # timm
+
     if torch.cuda.is_available(): # GPU operation have separate seed
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)

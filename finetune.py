@@ -5,7 +5,7 @@ from timm.data import Mixup
 from timm.loss import SoftTargetCrossEntropy
 import matplotlib.pyplot as plt
 from typing import Iterable, Optional
-from utils import adjust_learning_rate, param_groups_lrd 
+from utils import adjust_learning_rate, param_groups_lrd , set_seed
 import time
 import torch
 import os
@@ -13,10 +13,9 @@ import math
 import sys
 from collections import OrderedDict
 import json
-from timm.utils import accuracy, random_seed
+from timm.utils import accuracy
 import numpy as np
 from timm.models.layers import trunc_normal_
-import random
 
 DATA_DIR = './tiny-imagenet-200'
 try:
@@ -155,10 +154,7 @@ if __name__ == "__main__":
     opt = parser.parse_args()
 
     # Seeding
-    np.random.seed(42)
-    torch.manual_seed(42) # torch
-    random.seed(42) # random
-    random_seed(seed=42) # timm
+    set_seed(42)
 
     # load pre-trained model
     model_dir = os.path.join(MODELS_DIR, opt.pretrain_exp_name)
