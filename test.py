@@ -24,11 +24,17 @@ teacher_model = MAEBackboneViT_Teach(
 
 checkpoint_model = torch.load(os.path.join("./models/pretrain_large", "mae_pretrain_vit_large.pth"))["model"]
 
+model_trans = {
+    "blocks": "backbone",
+    "patch_embed": "input_layer"
+}
 
 all_keys = list(checkpoint_model.keys())
 new_dict = OrderedDict()
 for key in all_keys:
-    key_new = key.replace("blocks", "backbone")
+    key_new = key
+    for vit, mae in model_trans.items():
+        key_new = key_new.replace(vit, mae)
     new_dict[key_new] = checkpoint_model[key]
 
 checkpoint_model = new_dict
@@ -58,8 +64,3 @@ x = torch.rand((4, 3, 64, 64))
 
 x_, mask, student, teacher = student_model.forward(x, teacher_model)
 print(DMAEPretainViT.loss(x, x_, mask, teacher, student))
-
-from dataloader import get_finetune_dataloaders
-DATA_DIR = './tiny-imagenet-200'
-
-train_loader_finetune, val_loader_finetune = get_finetune_dataloaders(DATA_DIR, 1, 64, opt, use_cuda=True)

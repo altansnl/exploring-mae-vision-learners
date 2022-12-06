@@ -119,13 +119,9 @@ class MAEBackboneViT_Teach(nn.Module):
     def forward(self, x):
       
         # Patchify and embed
-        print(x.shape)
         x = self.input_layer(x)[:,:, 3:11, 3:11]
-        print(x.shape)
         x = x.flatten(2).transpose(1, 2)
-        print(x.shape)
         # add positional emb (skiping cls)
-        # print(x.shape, self.pos_embedding[:, 1:].shape, self.pos_embedding.shape)
 
         # we don not generate pos embedding for cls token in the first place
         x = x + self.pos_embedding[:, 1:]
@@ -233,11 +229,7 @@ class DMAEBackboneViT(nn.Module):
         teacher, mask, token_perm, undo_token_perm = teacher_model(x_og)
 
         x = self.input_layer(x)
-        
-        
-        print(x_og.shape)
-        
-        
+                
         # add positional emb (skiping cls)
         # print(x.shape, self.pos_embedding[:, 1:].shape, self.pos_embedding.shape)
 
@@ -262,10 +254,6 @@ class DMAEBackboneViT(nn.Module):
                 student = self.proj_st_2_teach(x)
             
         x = self.norm(x)
-        
-        print(student.shape)
-        print(teacher.shape)
-        
         
         return x, mask, undo_token_perm, student, teacher
         
