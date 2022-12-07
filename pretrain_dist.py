@@ -102,15 +102,21 @@ def validate_epoch(
 ):
     student_model.eval()
     losses = []
+    losses_mae = []
+    losses_dist = []
     for iter, (samples, _) in enumerate(data_loader):
         samples = samples.to(device, non_blocking=True)
         with torch.cuda.amp.autocast():
             x, mask, student, teacher = student_model.forward(samples, teacher_model)
-            loss = student_model.loss(samples, x, mask, teacher, student, alpha=args.alpha)
+            loss, loss_mae, loss_dist = student_model.loss(samples, x, mask, teacher, student, alpha=args.alpha)
 
 
         loss_value = loss.item()
         losses.append(loss_value)
+        loss_value_mae = loss_mae.item()
+        losses_mae.append(loss_value_mae)
+        loss_value_dist = loss_dist.item()
+        losses_dist.append(loss_value_dist)
 
     if save_imgs:
         result_dir =  os.path.join(RESULTS_DIR, args.exp_name)
@@ -121,7 +127,7 @@ def validate_epoch(
         save_images_tensors(samples, x, mask, args.patch_size, result_dir, str(current_epoch))
     avg_loss = sum(losses)/len(losses)
     print(f"Avg. validation loss for epoch {current_epoch} was {round(avg_loss, 5)}.")
-    return losses, avg_loss
+    return losses, avg_loss, losses_mae, losses_dist
 
 
 
