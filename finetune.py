@@ -120,7 +120,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     # default parameter setting for Vit-B
-    parser.add_argument('--epoch_count',  type=int, default=1, help='epoch_count')
+    parser.add_argument('--epoch_count',  type=int, default=300, help='epoch_count')
     parser.add_argument('--pretrain_exp_name', type=str, default="pretrain_test", help='Name of the experiment, for tracking purposes')
     parser.add_argument('--finetune_exp_name', type=str, default="finetune_test", help='Name of the experiment, for tracking purposes')
     parser.add_argument('--nb_classes', default=200, type=int, help='number of the classification types')
@@ -140,7 +140,7 @@ if __name__ == "__main__":
     parser.add_argument('--learning_rate', type=float, default=1e-3, metavar='LR', help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
     parser.add_argument('--layer_decay', type=float, default=0.75, help='layer-wise lr decay from ELECTRA/BEiT')
     parser.add_argument('--min_learning_rate', type=float, default=1e-6, metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
-    parser.add_argument('--warmup_epochs', type=int, default=5, metavar='N', help='epochs to warmup LR')
+    parser.add_argument('--warmup_epochs', type=int, default=10, metavar='N', help='epochs to warmup LR')
 
     # Augmentation
     parser.add_argument('--smoothing', type=float, default=0.1, help='Label smoothing (default: 0.1)')
