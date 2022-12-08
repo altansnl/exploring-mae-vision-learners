@@ -128,8 +128,8 @@ if __name__ == "__main__":
     parser.add_argument('--drop_path', type=float, default=0.1, metavar='PCT', help='Drop path rate (default: 0.1)')
 
     # Mixup
-    parser.add_argument('--mixup', type=float, default=0, help='mixup alpha, mixup enabled if > 0.')
-    parser.add_argument('--cutmix', type=float, default=0, help='cutmix alpha, cutmix enabled if > 0.')
+    parser.add_argument('--mixup', type=float, default=0.8, help='mixup alpha, mixup enabled if > 0.')
+    parser.add_argument('--cutmix', type=float, default=1.0, help='cutmix alpha, cutmix enabled if > 0.')
     parser.add_argument('--cutmix_minmax', type=float, nargs='+', default=None, help='cutmix min/max ratio, overrides alpha and enables cutmix if set (default: None)')
     parser.add_argument('--mixup_prob', type=float, default=1.0, help='Probability of performing mixup or cutmix when either/both is enabled')
     parser.add_argument('--mixup_switch_prob', type=float, default=0.5, help='Probability of switching to cutmix when both mixup and cutmix enabled')
@@ -138,7 +138,7 @@ if __name__ == "__main__":
     # Optimizer parameters
     parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
     parser.add_argument('--learning_rate', type=float, default=1e-3, metavar='LR', help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
-    parser.add_argument('--layer_decay', type=float, default=0.75, help='layer-wise lr decay from ELECTRA/BEiT')
+    parser.add_argument('--layer_decay', type=float, default=0.65, help='layer-wise lr decay from ELECTRA/BEiT')
     parser.add_argument('--min_learning_rate', type=float, default=1e-6, metavar='LR', help='lower lr bound for cyclic schedulers that hit 0')
     parser.add_argument('--warmup_epochs', type=int, default=10, metavar='N', help='epochs to warmup LR')
 
@@ -198,7 +198,7 @@ if __name__ == "__main__":
 
     device = torch.device('cuda')
 
-    mixup = None
+    mixup_fn = None
     mixup_active = opt.mixup > 0 or opt.cutmix > 0. or opt.cutmix_minmax is not None
     if mixup_active:
         print("Mixup is activated!")
@@ -231,12 +231,14 @@ if __name__ == "__main__":
         no_weight_decay_list=model.no_weight_decay(),
         layer_decay=opt.layer_decay
     )
-
+    
+    lr = opt.learning_rate * opt.batch_size / 256
+    opt.learning_rate = lr
     optimizer = torch.optim.AdamW(param_groups, lr=opt.learning_rate)
     loss_scaler = torch.cuda.amp.GradScaler(enabled=True)
 
     criterion = torch.nn.CrossEntropyLoss()
-    if mixup is not None:
+    if mixup_fn is not None:
         criterion = SoftTargetCrossEntropy()
 
     train_losses = []
@@ -253,7 +255,7 @@ if __name__ == "__main__":
             device=device,
             epoch=epoch,
             scaler=loss_scaler,
-            mixup=mixup,
+            mixup=mixup_fn,
             print_frequency=100,
             args=opt)
 
