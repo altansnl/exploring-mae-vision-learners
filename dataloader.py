@@ -72,6 +72,22 @@ def get_pretrain_transform(imgsz):
                             std=[0.229, 0.224, 0.225])
             ])
 
+# DEIT-3 transforms
+def get_pretrain_transform_deit(imgsz):
+    primary_tfl = [
+            T.Resize(imgsz, interpolation=3),
+            T.RandomCrop(imgsz, padding=4,padding_mode='reflect'),
+            T.RandomHorizontalFlip()
+        ]
+    secondary_tfl = [T.RandomChoice([T.Grayscale(num_output_channels=3),
+                                    T.RandomSolarize(0,p=1.0),
+                                    T.GaussianBlur(3,sigma=(0.1*(1/3.5),2*(1/3.5)))])]
+    return T.Compose(primary_tfl+secondary_tfl+[
+                T.ToTensor(),  # Converting cropped images to tensors
+                T.Normalize(mean=[0.485, 0.456, 0.406], 
+                            std=[0.229, 0.224, 0.225])
+            ])
+
 def get_finetune_transform(is_train, imgsz, args):
     return build_transform(is_train, imgsz, args)
 
@@ -117,7 +133,7 @@ def get_pretrain_dataloaders(datadir, batch_size, imgsz=64, use_cuda=True):
     # Define training and validation data paths
     train_dir = os.path.join(datadir, 'train') 
     valid_dir = os.path.join(datadir, 'val')
-    transform = get_pretrain_transform(imgsz)
+    transform = get_pretrain_transform_deit(imgsz)
 
     fp = open(os.path.join(valid_dir, 'val_annotations.txt'), 'r')
     data = fp.readlines()
