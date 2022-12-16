@@ -139,7 +139,7 @@ if __name__ == "__main__":
     parser.add_argument('--min_learning_rate', type=float, default=0., help='lower lr bound for cyclic schedulers that hit 0')
     parser.add_argument('--weight_decay', type=float, default=0.05, help='weight decay (default: 0.05)')
     parser.add_argument('--exp_name', type=str, default="pretrain_test", help='Name of the experiment, for tracking purposes')
-
+    parser.add_argument('--deit_augment', type=bool, default=False, help='use of 3-Augmentation presented in DEiT III')
     opt = parser.parse_args()
 
     # Seeding
@@ -163,7 +163,9 @@ if __name__ == "__main__":
         norm2=partial(nn.LayerNorm, eps=1e-6)
     )
 
-    train_loader_pretrain, val_loader_pretrain = get_pretrain_dataloaders(DATA_DIR, opt.batch_size, imgsz=64, use_cuda=True)
+    train_loader_pretrain, val_loader_pretrain = get_pretrain_dataloaders(DATA_DIR, opt.batch_size,
+                                                                          imgsz=64, use_cuda=True,
+                                                                          deit=opt.deit_augment)
     device = torch.device('cuda')
     mae.to(device)
     param_groups = optim_factory.param_groups_weight_decay(mae, opt.weight_decay)

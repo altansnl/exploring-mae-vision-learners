@@ -129,11 +129,14 @@ def get_finetune_dataloaders(datadir, batch_size, imgsz, args, use_cuda=True):
     return train_loader_finetune, val_loader_finetune
 
 
-def get_pretrain_dataloaders(datadir, batch_size, imgsz=64, use_cuda=True):
+def get_pretrain_dataloaders(datadir, batch_size, imgsz=64, use_cuda=True, deit=False):
     # Define training and validation data paths
     train_dir = os.path.join(datadir, 'train') 
     valid_dir = os.path.join(datadir, 'val')
-    transform = get_pretrain_transform_deit(imgsz)
+    if deit:
+        transform = get_pretrain_transform_deit(imgsz)
+    else:
+        transform = get_pretrain_transform(imgsz)
 
     fp = open(os.path.join(valid_dir, 'val_annotations.txt'), 'r')
     data = fp.readlines()
